@@ -1,0 +1,26 @@
+# AntTrajectoryAnalysis
+
+A Python toolkit for extracting and analysing biological trajectories
+from video recordings.
+
+The software was developed for the quantitative analysis of ant
+foraging trajectories and demonstrates the application of statistical
+physics descriptors to biological motion.
+
+Features:
+
+- Automatic trajectory extraction using OpenCV
+- Multi-object tracking
+- Convex hull and explored area estimation
+- Monte Carlo area calculation
+- Occupancy maps
+- Principal Component Analysis (PCA)
+- Mean Squared Displacement (MSD)
+- Straightness analysis
+- Fractal dimension estimation
+- Publication-quality figures
+
+The software can also be adapted to other biological systems such as
+protozoa, rotifers, nematodes, and other organisms exhibiting
+approximately planar motion.
+

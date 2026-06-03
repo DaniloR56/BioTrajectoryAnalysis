@@ -1,0 +1,1371 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+# =============================================================================
+# AntTracking_V1.0.py
+# =============================================================================
+#
+# Ant Trajectory Extraction from Video Recordings
+#
+# A computer-vision tool for detecting, tracking, and analysing ant motion
+# from video recordings. The program supports region-of-interest (ROI)
+# selection, background subtraction, contour filtering, trajectory
+# reconstruction, calibration, and export of tracking data for subsequent
+# statistical analysis.
+#
+# Developed as part of the project:
+#
+# "Quantitative Analysis of Biological Trajectories Using Computer Vision
+# and Statistical Physics: An Application to Ant Motion"
+#
+# The software can also be adapted for tracking other biological systems,
+# including protozoa, rotifers, nematodes, and other organisms exhibiting
+# approximately planar motion.
+#
+# Main Features
+# -------------
+# - Interactive ROI selection and reuse
+# - Background subtraction and frame differencing
+# - Shape-based object filtering
+# - Multi-object trajectory reconstruction
+# - Real-time visualization of detections and tracks
+# - Calibration from pixels to physical units
+# - Export of trajectories in CSV format
+# - JSON configuration files for reproducible analyses
+#
+# Input
+# -----
+# - Video file (MOV, MP4, AVI, ...)
+# - Optional JSON configuration file
+#
+# Output
+# ------
+# - Trajectory CSV files
+# - Tracking statistics
+# - Diagnostic plots
+# - Configuration files
+#
+# Dependencies
+# ------------
+# Python >= 3.10
+# OpenCV
+# NumPy
+# Pandas
+# SciPy
+# Matplotlib
+#
+# Author
+# ------
+# Danilo Roccatano
+# School of Mathematics and Physics
+# University of Lincoln
+# Lincoln, United Kingdom
+#
+# Email:
+# danilo.roccatano@gmail.com
+#
+# Version: 1.0
+# Created: 2026-04-29
+# Last Modified: 2026-06-03
+#
+# License
+# -------
+# MIT License
+#
+# GitHub Repository:
+# https://github.com/<USERNAME>/<REPOSITORY>
+#
+# Citation
+# --------
+# If you use this software in published work, please cite:
+#
+# Roccatano, D.
+# Quantitative Analysis of Biological Trajectories Using Computer Vision
+# and Statistical Physics: An Application to Ant Motion.
+#
+# =============================================================================
+#
+
+"""
+AntTracking_V1.0
+
+This program extracts trajectories from video recordings of ants and
+other small moving organisms. Objects are detected using background
+subtraction or frame differencing and linked into trajectories using
+distance-based tracking.
+
+The resulting trajectories can be analysed with the companion
+BioTrajectoryAnalysis package to compute:
+
+    - Explored area
+    - Occupancy maps
+    - Principal Component Analysis (PCA)
+    - Mean Squared Displacement (MSD)
+    - Straightness index
+    - Fractal dimension
+
+Example
+-------
+python AntTracking_V1.0.py video.mov --display
+
+python AntTracking_V1.0.py video.mov \
+       --threshold 18 \
+       --min-area 6 \
+       --max-area 250 \
+       --output results
+
+"""
+
+import cv2
+import numpy as np
+import pandas as pd
+import os
+import sys
+import json
+import argparse
+from datetime import datetime
+from scipy.optimize import linear_sum_assignment
+
+SCRIPT_VERSION = 'TrackingNew4_Calibrated_TuningPanel_cli_overrides_config_2026-06-03'
+
+# ================== CONFIGURATION ==================
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description='Track ants from video with ROI selection')
+    parser.add_argument('video_path', help='Path to video file')
+    parser.add_argument('--output', '-o', type=str, default='tracking_results',
+                       help='Output directory (default: tracking_results)')
+    parser.add_argument('--config', '-c', type=str, default=None,
+                       help='Load configuration from JSON file; explicitly supplied command-line options override config values')
+    parser.add_argument('--ignore-config-roi', action='store_true',
+                       help='Load parameters from config.json but ignore its ROI and ask for ROI selection again')
+    parser.add_argument('--tune', action='store_true',
+                       help='Interactive tuning mode with OpenCV sliders; save current parameters with key s')
+    parser.add_argument('--tune-frame-step', type=int, default=1,
+                       help='Process every Nth frame in tuning mode (default: 1)')
+    parser.add_argument('--min-area', type=int, default=20,
+                       help='Minimum ant area in pixels (default: 20)')
+    parser.add_argument('--max-area', type=int, default=500,
+                       help='Maximum ant area in pixels (default: 500)')
+    parser.add_argument('--brightness', type=int, default=100,
+                       help='Brightness threshold for dark filter (default: 100, lower=darker)')
+    parser.add_argument('--threshold', type=int, default=25,
+                       help='Motion detection threshold (default: 25)')
+    parser.add_argument('--display', action='store_true',
+                       help='Show real-time visualization')
+    parser.add_argument('--no-dark-filter', action='store_true',
+                       help='Disable dark color filter')
+    parser.add_argument('--max-aspect-ratio', type=float, default=None,
+                       help='Reject detections whose bounding-box aspect ratio is larger than this value')
+    parser.add_argument('--min-circularity', type=float, default=None,
+                       help='Reject detections whose circularity is below this value; useful to remove grass stems')
+    parser.add_argument('--merge-distance', type=float, default=30.0,
+                       help='Distance in pixels for merging close detections (default: 30)')
+    parser.add_argument('--verbose', action='store_true',
+                       help='Print detailed diagnostic messages')
+    parser.add_argument('--method', choices=['mog2', 'framediff'], default='framediff',
+                       help='Detection method: mog2 or framediff (default: framediff)')
+    parser.add_argument('--max-distance', type=int, default=80,
+                       help='Max pixel distance for matching tracks (default: 80)')
+    parser.add_argument('--max-gap', type=int, default=15,
+                       help='Max frames to keep track alive (default: 15)')
+    parser.add_argument('--skip-frames', type=int, default=1,
+                       help='Process every Nth frame (default: 1)')
+    parser.add_argument('--cm-per-pixel', type=float, default=None,
+                       help='Known calibration factor in cm/pixel. If provided, interactive calibration is skipped.')
+    parser.add_argument('--calibration-distance-cm', type=float, default=None,
+                       help='Known real distance in cm for interactive two-point calibration.')
+    parser.add_argument('--no-calibration', action='store_true',
+                       help='Skip spatial calibration and save only pixel coordinates.')
+    return parser.parse_args()
+
+
+# ================== ROI SELECTION FUNCTIONS ==================
+
+def select_roi_polygon(frame, window_name="Select ROI - Press ENTER to confirm, ESC to cancel"):
+    """Draw polygon ROI by clicking points"""
+    clone = frame.copy()
+    points = []
+
+    def mouse_callback(event, x, y, flags, param):
+        nonlocal points, clone
+        if event == cv2.EVENT_LBUTTONDOWN:
+            points.append((x, y))
+            clone = frame.copy()
+            for i, pt in enumerate(points):
+                cv2.circle(clone, pt, 5, (0, 255, 0), -1)
+                if i > 0:
+                    cv2.line(clone, points[i-1], pt, (0, 255, 0), 2)
+            cv2.imshow(window_name, clone)
+        elif event == cv2.EVENT_RBUTTONDOWN:
+            if points:
+                points.pop()
+                clone = frame.copy()
+                for i, pt in enumerate(points):
+                    cv2.circle(clone, pt, 5, (0, 255, 0), -1)
+                    if i > 0:
+                        cv2.line(clone, points[i-1], pt, (0, 255, 0), 2)
+                cv2.imshow(window_name, clone)
+
+    cv2.namedWindow(window_name)
+    cv2.setMouseCallback(window_name, mouse_callback)
+
+    # Instructions
+    inst = clone.copy()
+    cv2.putText(inst, "Left click: add point | Right click: remove last", (10, 30),
+               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+    cv2.putText(inst, "Press ENTER to confirm | ESC to cancel", (10, 60),
+               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+    cv2.imshow(window_name, inst)
+
+    while True:
+        key = cv2.waitKey(1) & 0xFF
+        if key == 13:  # ENTER
+            if len(points) >= 3:
+                break
+            else:
+                print("Need at least 3 points for polygon")
+        elif key == 27:  # ESC
+            points = []
+            break
+
+    cv2.destroyWindow(window_name)
+
+    if len(points) >= 3:
+        mask = np.zeros(frame.shape[:2], dtype=np.uint8)
+        pts = np.array(points, dtype=np.int32)
+        cv2.fillPoly(mask, [pts], 255)
+        return mask, points
+    return None, None
+
+
+def select_roi_rectangle(frame, window_name="Select ROI - Drag rectangle, press ENTER"):
+    """Draw rectangle ROI by clicking and dragging"""
+    clone = frame.copy()
+    rect = None
+    drawing = False
+    start_point = None
+
+    def mouse_callback(event, x, y, flags, param):
+        nonlocal rect, drawing, start_point, clone
+        if event == cv2.EVENT_LBUTTONDOWN:
+            drawing = True
+            start_point = (x, y)
+            clone = frame.copy()
+        elif event == cv2.EVENT_MOUSEMOVE:
+            if drawing and start_point:
+                clone = frame.copy()
+                cv2.rectangle(clone, start_point, (x, y), (0, 255, 0), 2)
+                cv2.imshow(window_name, clone)
+        elif event == cv2.EVENT_LBUTTONUP:
+            drawing = False
+            rect = (start_point[0], start_point[1], x, y)
+            clone = frame.copy()
+            cv2.rectangle(clone, start_point, (x, y), (0, 255, 0), 2)
+            cv2.imshow(window_name, clone)
+
+    cv2.namedWindow(window_name)
+    cv2.setMouseCallback(window_name, mouse_callback)
+
+    # Instructions
+    inst = clone.copy()
+    cv2.putText(inst, "Click and drag to draw rectangle", (10, 30),
+               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+    cv2.putText(inst, "Press ENTER to confirm | ESC to cancel", (10, 60),
+               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+    cv2.imshow(window_name, inst)
+
+    while True:
+        key = cv2.waitKey(1) & 0xFF
+        if key == 13:  # ENTER
+            if rect:
+                break
+        elif key == 27:  # ESC
+            rect = None
+            break
+
+    cv2.destroyWindow(window_name)
+
+    if rect:
+        x1 = min(rect[0], rect[2])
+        y1 = min(rect[1], rect[3])
+        x2 = max(rect[0], rect[2])
+        y2 = max(rect[1], rect[3])
+        mask = np.zeros(frame.shape[:2], dtype=np.uint8)
+        cv2.rectangle(mask, (x1, y1), (x2, y2), 255, -1)
+        return mask, [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+    return None, None
+
+
+def select_roi(frame):
+    """Main ROI selection interface"""
+    print("\n" + "="*60)
+    print("ROI SELECTION")
+    print("="*60)
+    print("1 - Polygon (draw custom shape)")
+    print("2 - Rectangle (draw bounding box)")
+    print("3 - Skip (use full frame)")
+
+    choice = input("Enter choice (1, 2, or 3): ").strip()
+
+    if choice == '1':
+        return select_roi_polygon(frame)
+    elif choice == '2':
+        return select_roi_rectangle(frame)
+    else:
+        print("Using full frame (no ROI)")
+        return None, None
+
+
+
+def roi_points_to_mask(frame_shape, roi_points):
+    """Convert saved ROI points into a binary mask."""
+    if not roi_points:
+        return None
+    mask = np.zeros(frame_shape[:2], dtype=np.uint8)
+    pts = np.array(roi_points, dtype=np.int32)
+    if len(pts) >= 3:
+        cv2.fillPoly(mask, [pts], 255)
+        return mask
+    return None
+
+
+def contour_shape_metrics(contour):
+    """Return area, aspect ratio and circularity for a contour."""
+    area = cv2.contourArea(contour)
+    x, y, w, h = cv2.boundingRect(contour)
+    small_side = max(1, min(w, h))
+    large_side = max(w, h)
+    aspect_ratio = large_side / small_side
+    perimeter = cv2.arcLength(contour, True)
+    circularity = 4.0 * np.pi * area / (perimeter * perimeter + 1e-9)
+    return area, aspect_ratio, circularity
+
+
+# ================== CALIBRATION FUNCTIONS ==================
+
+def calibrate_two_points(frame, known_distance_cm=None,
+                         window_name="Calibration - click two reference points"):
+    """
+    Interactive two-point spatial calibration.
+
+    The user clicks two points in the first video frame whose real-world
+    separation is known. The function returns the conversion factor in
+    cm/pixel and a dictionary with calibration metadata.
+    """
+    if known_distance_cm is None:
+        while True:
+            value = input("Known calibration distance in cm (ENTER to skip): ").strip()
+            if value == "":
+                print("Calibration skipped: no distance entered.")
+                return None, None
+            try:
+                known_distance_cm = float(value)
+                if known_distance_cm <= 0:
+                    raise ValueError
+                break
+            except ValueError:
+                print("Please enter a positive number, e.g. 10.0")
+
+    clone = frame.copy()
+    points = []
+
+    def redraw():
+        display = clone.copy()
+        cv2.putText(display, "Click two points separated by the known distance",
+                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
+        cv2.putText(display, f"Known distance: {known_distance_cm:.3f} cm | ENTER confirm | ESC skip",
+                    (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
+        for i, pt in enumerate(points):
+            cv2.circle(display, pt, 6, (0, 255, 0), -1)
+            cv2.putText(display, str(i + 1), (pt[0] + 8, pt[1] - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        if len(points) == 2:
+            cv2.line(display, points[0], points[1], (0, 255, 0), 2)
+            pix_dist = np.hypot(points[1][0] - points[0][0],
+                                points[1][1] - points[0][1])
+            cv2.putText(display, f"Pixel distance: {pix_dist:.2f}",
+                        (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 0), 2)
+        cv2.imshow(window_name, display)
+
+    def mouse_callback(event, x, y, flags, param):
+        nonlocal points
+        if event == cv2.EVENT_LBUTTONDOWN:
+            if len(points) < 2:
+                points.append((x, y))
+            else:
+                points = [(x, y)]
+            redraw()
+        elif event == cv2.EVENT_RBUTTONDOWN:
+            if points:
+                points.pop()
+            redraw()
+
+    cv2.namedWindow(window_name)
+    cv2.setMouseCallback(window_name, mouse_callback)
+    redraw()
+
+    while True:
+        key = cv2.waitKey(1) & 0xFF
+        if key == 13:  # ENTER
+            if len(points) == 2:
+                break
+            print("Please click two points first, or press ESC to skip.")
+        elif key == 27:  # ESC
+            cv2.destroyWindow(window_name)
+            print("Calibration skipped by user.")
+            return None, None
+
+    cv2.destroyWindow(window_name)
+    pixel_distance = float(np.hypot(points[1][0] - points[0][0],
+                                    points[1][1] - points[0][1]))
+    if pixel_distance <= 0:
+        print("Calibration failed: zero pixel distance.")
+        return None, None
+
+    cm_per_pixel = known_distance_cm / pixel_distance
+    calibration = {
+        'method': 'two_point',
+        'point1_px': list(points[0]),
+        'point2_px': list(points[1]),
+        'known_distance_cm': known_distance_cm,
+        'pixel_distance': pixel_distance,
+        'cm_per_pixel': cm_per_pixel
+    }
+    print(f"Calibration: {pixel_distance:.2f} px = {known_distance_cm:.3f} cm")
+    print(f"  cm_per_pixel = {cm_per_pixel:.8f}")
+    return cm_per_pixel, calibration
+
+
+def pixel_to_cm(x, y, cm_per_pixel):
+    """Convert pixel coordinates to physical coordinates in cm."""
+    if cm_per_pixel is None:
+        return None, None
+    return x * cm_per_pixel, y * cm_per_pixel
+
+# ================== TRACKING CLASSES ==================
+
+class AntTrack:
+    def __init__(self, track_id, position, frame_id):
+        self.id = track_id
+        self.positions = [position]
+        self.frames = [frame_id]
+        self.missed = 0
+        self.active = True
+
+    def add_position(self, position, frame_id):
+        self.positions.append(position)
+        self.frames.append(frame_id)
+        self.missed = 0
+        self.active = True
+
+    def mark_missed(self):
+        self.missed += 1
+
+
+class AntTracker:
+    """
+    Simple multi-object tracker with persistent track storage.
+
+    Important:
+    - self.tracks contains only currently active tracks.
+    - self.all_tracks contains every track ever created, including tracks
+      that have disappeared from the field of view.
+    - ant_tracks.csv is generated from self.all_tracks, so trajectories
+      are not lost when ants leave the video or are temporarily missed.
+    """
+
+    def __init__(self, max_distance=80, max_gap=15):
+        self.tracks = []
+        self.all_tracks = []
+        self.next_id = 0
+        self.max_distance = max_distance
+        self.max_gap = max_gap
+
+    def _new_track(self, detection, frame_id):
+        track = AntTrack(self.next_id, detection, frame_id)
+        self.tracks.append(track)
+        self.all_tracks.append(track)
+        self.next_id += 1
+
+    def update(self, detections, frame_id):
+        if not self.tracks:
+            for det in detections:
+                self._new_track(det, frame_id)
+            return
+
+        if not detections:
+            for track in self.tracks:
+                track.mark_missed()
+            self.tracks = [t for t in self.tracks if t.missed <= self.max_gap]
+            return
+
+        # Predict positions using a constant-velocity model
+        predictions = []
+        for track in self.tracks:
+            if len(track.positions) >= 2:
+                dx = track.positions[-1][0] - track.positions[-2][0]
+                dy = track.positions[-1][1] - track.positions[-2][1]
+                pred = (track.positions[-1][0] + dx, track.positions[-1][1] + dy)
+            else:
+                pred = track.positions[-1]
+            predictions.append(pred)
+
+        # Cost matrix
+        cost = np.zeros((len(self.tracks), len(detections)))
+        for i, pred in enumerate(predictions):
+            for j, det in enumerate(detections):
+                dist = np.sqrt((pred[0] - det[0])**2 + (pred[1] - det[1])**2)
+                cost[i, j] = dist if dist < self.max_distance else 1e6
+
+        # Hungarian assignment
+        row_ind, col_ind = linear_sum_assignment(cost)
+
+        matched_tracks = set()
+        matched_dets = set()
+
+        for i, j in zip(row_ind, col_ind):
+            if cost[i, j] < self.max_distance:
+                self.tracks[i].add_position(detections[j], frame_id)
+                matched_tracks.add(i)
+                matched_dets.add(j)
+
+        # Mark unmatched active tracks as missed
+        for i, track in enumerate(self.tracks):
+            if i not in matched_tracks:
+                track.mark_missed()
+
+        # Remove only from active list; keep in all_tracks for saving
+        self.tracks = [t for t in self.tracks if t.missed <= self.max_gap]
+
+        # New tracks for unmatched detections
+        for j, det in enumerate(detections):
+            if j not in matched_dets:
+                self._new_track(det, frame_id)
+
+    def get_all_positions(self):
+        positions = []
+        for track in self.all_tracks:
+            positions.extend(track.positions)
+        return np.array(positions) if positions else np.array([])
+
+    def get_tracks(self):
+        """Return active tracks for display."""
+        return self.tracks
+
+    def get_all_tracks(self):
+        """Return all tracks, including completed/lost tracks."""
+        return self.all_tracks
+
+
+# ================== VISUALIZATION ==================
+
+def create_visualization(frame, fgmask, detections, tracker, frame_id, fps, args):
+    """Create enhanced visualization with multiple panels"""
+
+    # Main display
+    display = frame.copy()
+
+    # Draw detections (green circles)
+    for (x, y) in detections:
+        cv2.circle(display, (x, y), 4, (0, 255, 0), -1)
+
+    # Draw tracks (colored trails)
+    colors = [(0, 255, 255), (255, 0, 255), (255, 255, 0), (0, 255, 0), (255, 0, 0)]
+    for i, track in enumerate(tracker.get_tracks()):
+        color = colors[i % len(colors)]
+        if len(track.positions) > 1:
+            # Draw trail (last 30 positions)
+            trail = track.positions[-30:]
+            for j in range(1, len(trail)):
+                cv2.line(display, trail[j-1], trail[j], color, 2)
+        # Draw current position with ID
+        if track.positions:
+            cv2.circle(display, track.positions[-1], 6, color, -1)
+            cv2.putText(display, str(track.id),
+                       (track.positions[-1][0] + 5, track.positions[-1][1] - 5),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+
+    # Info panel
+    elapsed = frame_id / fps if fps > 0 else 0
+    cv2.rectangle(display, (0, 0), (350, 120), (0, 0, 0), -1)
+    cv2.putText(display, f"Frame: {frame_id}", (10, 25),
+               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+    cv2.putText(display, f"Time: {int(elapsed//60):02d}:{int(elapsed%60):02d}", (10, 50),
+               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+    cv2.putText(display, f"Tracks: {len(tracker.tracks)}", (10, 75),
+               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 1)
+    cv2.putText(display, f"Detections: {len(detections)}", (10, 100),
+               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 1)
+
+    # Mask display (resized to match)
+    mask_color = cv2.cvtColor(fgmask, cv2.COLOR_GRAY2BGR)
+
+    # Combine side by side
+    combined = np.hstack([display, mask_color])
+
+    return combined
+
+
+# ================== CONFIGURATION SAVE/LOAD ==================
+
+def save_config(output_dir, args, roi_points=None, calibration=None):
+    """Save configuration to JSON file for reproducibility"""
+    config = {
+        'timestamp': datetime.now().isoformat(),
+        'video_file': args.video_path,
+        'parameters': {
+            'method': args.method,
+            'brightness_threshold': args.brightness,
+            'min_area': args.min_area,
+            'max_area': args.max_area,
+            'motion_threshold': args.threshold,
+            'dark_filter': not args.no_dark_filter,
+            'max_distance': args.max_distance,
+            'max_gap': args.max_gap,
+            'skip_frames': args.skip_frames,
+            'max_aspect_ratio': args.max_aspect_ratio,
+            'min_circularity': args.min_circularity,
+            'merge_distance': args.merge_distance,
+            'verbose': args.verbose
+        },
+        'roi': roi_points if roi_points else None,
+        'calibration': calibration
+    }
+
+    config_file = os.path.join(output_dir, "config.json")
+    with open(config_file, 'w') as f:
+        json.dump(config, f, indent=2)
+    print(f"  Saved: {config_file}")
+    return config_file
+
+
+def load_config(config_file):
+    """Load configuration from JSON file. Supports original and tuned config formats."""
+    with open(config_file, 'r') as f:
+        config = json.load(f)
+    params = config.get('parameters', {})
+    print(f"Loaded configuration from: {config_file}")
+    print(f"  Original video: {config.get('video_file', 'not stored in this config')}")
+    print(f"  Method: {params.get('method', 'not stored')}")
+    print(f"  Brightness: {params.get('brightness_threshold', params.get('brightness', 'not stored'))}")
+    return config
+
+def merge_close_detections(detections, max_distance=30, verbose=False):
+    """
+    Merge detections that are too close to each other.
+    This prevents counting the same ant multiple times
+    (e.g., head and abdomen detected separately).
+
+    Args:
+        detections: List of (x, y) tuples
+        max_distance: Maximum distance to consider as same ant (pixels)
+
+    Returns:
+        merged_detections: List of merged (x, y) tuples with integer coordinates
+    """
+    if len(detections) < 2:
+        # Ensure integer coordinates
+        return [(int(x), int(y)) for (x, y) in detections]
+
+    try:
+        from sklearn.cluster import DBSCAN
+        import numpy as np
+
+        points = np.array(detections, dtype=np.float64)
+
+        # DBSCAN clusters points that are close together
+        clustering = DBSCAN(eps=max_distance, min_samples=1).fit(points)
+        labels = clustering.labels_
+
+        merged = []
+        for label in set(labels):
+            # Get all points in this cluster
+            cluster_points = points[labels == label]
+            # Use centroid as the merged position
+            centroid = np.mean(cluster_points, axis=0)
+            # Ensure integer coordinates (OpenCV requirement)
+            merged.append((int(centroid[0]), int(centroid[1])))
+
+        # Optional diagnostic info
+        if verbose and len(merged) < len(detections):
+            print(f"    Merged {len(detections)} -> {len(merged)} detections "
+                  f"(saved {len(detections) - len(merged)} duplicates)")
+
+        return merged
+
+    except ImportError:
+        # Fallback: simple distance-based merging (slower but no sklearn dependency)
+        merged = []
+        used = [False] * len(detections)
+
+        for i, (x1, y1) in enumerate(detections):
+            if used[i]:
+                continue
+
+            cluster = [(x1, y1)]
+            for j, (x2, y2) in enumerate(detections):
+                if not used[j] and i != j:
+                    dist = np.sqrt((x1 - x2)**2 + (y1 - y2)**2)
+                    if dist < max_distance:
+                        cluster.append((x2, y2))
+                        used[j] = True
+
+            # Calculate centroid of cluster
+            cx = int(np.mean([p[0] for p in cluster]))
+            cy = int(np.mean([p[1] for p in cluster]))
+            merged.append((cx, cy))
+            used[i] = True
+
+        return merged
+
+
+# ================== MAIN FUNCTION ==================
+
+
+# ================== INTERACTIVE TUNING MODE ==================
+
+def _nothing(x):
+    pass
+
+
+def _create_tuning_trackbars(args):
+    """Create OpenCV trackbars for interactive parameter tuning."""
+    cv2.namedWindow("Tuning Controls", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("Tuning Controls", 560, 440)
+
+    cv2.createTrackbar("threshold", "Tuning Controls", int(args.threshold), 255, _nothing)
+    cv2.createTrackbar("min_area", "Tuning Controls", int(args.min_area), 1000, _nothing)
+    cv2.createTrackbar("max_area", "Tuning Controls", int(args.max_area), 5000, _nothing)
+
+    ar = int((args.max_aspect_ratio if args.max_aspect_ratio is not None else 4.0) * 10)
+    cv2.createTrackbar("max_aspect_x10", "Tuning Controls", ar, 200, _nothing)
+
+    circ = int((args.min_circularity if args.min_circularity is not None else 0.15) * 100)
+    cv2.createTrackbar("min_circ_x100", "Tuning Controls", circ, 100, _nothing)
+
+    cv2.createTrackbar("merge_dist", "Tuning Controls", int(args.merge_distance), 200, _nothing)
+    cv2.createTrackbar("max_track_dist", "Tuning Controls", int(args.max_distance), 300, _nothing)
+    cv2.createTrackbar("max_gap", "Tuning Controls", int(args.max_gap), 100, _nothing)
+
+
+def _read_tuning_trackbars():
+    """Read current values from OpenCV trackbars."""
+    threshold = cv2.getTrackbarPos("threshold", "Tuning Controls")
+    min_area = max(1, cv2.getTrackbarPos("min_area", "Tuning Controls"))
+    max_area = max(min_area + 1, cv2.getTrackbarPos("max_area", "Tuning Controls"))
+    max_aspect_ratio = max(0.1, cv2.getTrackbarPos("max_aspect_x10", "Tuning Controls") / 10.0)
+    min_circularity = max(0.0, cv2.getTrackbarPos("min_circ_x100", "Tuning Controls") / 100.0)
+    merge_distance = max(1, cv2.getTrackbarPos("merge_dist", "Tuning Controls"))
+    max_distance = max(1, cv2.getTrackbarPos("max_track_dist", "Tuning Controls"))
+    max_gap = max(0, cv2.getTrackbarPos("max_gap", "Tuning Controls"))
+
+    return {
+        "threshold": threshold,
+        "min_area": min_area,
+        "max_area": max_area,
+        "max_aspect_ratio": max_aspect_ratio,
+        "min_circularity": min_circularity,
+        "merge_distance": merge_distance,
+        "max_distance": max_distance,
+        "max_gap": max_gap,
+    }
+
+
+def _detect_single_frame_for_tuning(frame, prev_gray, bg_subtractor, roi_mask, args, params):
+    """Detection routine used by tuning mode."""
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    if args.method == "mog2":
+        fgmask = bg_subtractor.apply(frame)
+        _, fgmask = cv2.threshold(fgmask, params["threshold"], 255, cv2.THRESH_BINARY)
+    else:
+        if prev_gray is None:
+            return [], np.zeros(gray.shape, dtype=np.uint8), gray
+        diff = cv2.absdiff(gray, prev_gray)
+        _, fgmask = cv2.threshold(diff, params["threshold"], 255, cv2.THRESH_BINARY)
+
+    if not args.no_dark_filter:
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        mask_dark = cv2.inRange(
+            hsv,
+            np.array([0, 0, 0]),
+            np.array([180, 255, args.brightness])
+        )
+        fgmask = cv2.bitwise_and(fgmask, mask_dark)
+
+    if roi_mask is not None:
+        fgmask = cv2.bitwise_and(fgmask, roi_mask)
+
+    kernel = np.ones((3, 3), np.uint8)
+    fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_OPEN, kernel)
+    fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_CLOSE, kernel)
+
+    contours, _ = cv2.findContours(fgmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    detections = []
+    for cnt in contours:
+        area, aspect_ratio, circularity = contour_shape_metrics(cnt)
+        if not (params["min_area"] < area < params["max_area"]):
+            continue
+        if aspect_ratio > params["max_aspect_ratio"]:
+            continue
+        if circularity < params["min_circularity"]:
+            continue
+
+        M = cv2.moments(cnt)
+        if M["m00"] != 0:
+            x = int(M["m10"] / M["m00"])
+            y = int(M["m01"] / M["m00"])
+            if roi_mask is None or roi_mask[y, x] > 0:
+                detections.append((x, y))
+
+    detections = merge_close_detections(
+        detections,
+        max_distance=params["merge_distance"],
+        verbose=False
+    )
+    return detections, fgmask, gray
+
+
+def _save_tuned_config(args, roi_points, params, output_path):
+    """Save tuned parameters as config_tuned.json."""
+    config = {
+        "script_version": SCRIPT_VERSION,
+        "created_by": "interactive_tuning_mode",
+        "timestamp": datetime.now().isoformat(),
+        "roi": [[int(x), int(y)] for x, y in roi_points] if roi_points else None,
+        "calibration": {
+            "cm_per_pixel": args.cm_per_pixel,
+            "calibrated": args.cm_per_pixel is not None
+        },
+        "parameters": {
+            "method": args.method,
+            "min_area": params["min_area"],
+            "max_area": params["max_area"],
+            "brightness": args.brightness,
+            "threshold": params["threshold"],
+            "no_dark_filter": args.no_dark_filter,
+            "max_aspect_ratio": params["max_aspect_ratio"],
+            "min_circularity": params["min_circularity"],
+            "merge_distance": params["merge_distance"],
+            "max_distance": params["max_distance"],
+            "max_gap": params["max_gap"],
+            "skip_frames": args.skip_frames,
+            "verbose": args.verbose
+        }
+    }
+    with open(output_path, "w") as f:
+        json.dump(config, f, indent=2)
+    print(f"\nSaved tuned configuration to: {output_path}")
+
+
+def run_interactive_tuning(cap, first_frame, roi_mask, roi_points, args):
+    """
+    Interactive tuning mode.
+    Keys:
+      q or ESC : quit
+      p        : pause/play
+      s        : save current parameters to config_tuned.json
+      r        : rewind video to start
+    """
+    print("\n" + "="*70)
+    print("INTERACTIVE TUNING MODE")
+    print("="*70)
+    print("Use sliders to tune detection/tracking parameters.")
+    print("Keys: p=pause/play, s=save config, r=rewind, q/ESC=quit")
+    print("="*70)
+
+    _create_tuning_trackbars(args)
+
+    bg_subtractor = cv2.createBackgroundSubtractorMOG2(
+        history=500,
+        varThreshold=16,
+        detectShadows=False
+    )
+
+    params0 = _read_tuning_trackbars()
+    tracker = AntTracker(max_distance=params0["max_distance"], max_gap=params0["max_gap"])
+
+    paused = False
+    prev_gray = cv2.cvtColor(first_frame, cv2.COLOR_BGR2GRAY)
+    frame = first_frame.copy()
+    frame_id = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+
+    while True:
+        if not paused:
+            for _ in range(max(1, args.tune_frame_step)):
+                ret, frame = cap.read()
+                if not ret:
+                    print("End of video reached. Press r to rewind or q to quit.")
+                    paused = True
+                    frame = first_frame.copy()
+                    break
+            frame_id = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+
+        params = _read_tuning_trackbars()
+        tracker.max_distance = params["max_distance"]
+        tracker.max_gap = params["max_gap"]
+
+        detections, mask, gray = _detect_single_frame_for_tuning(
+            frame, prev_gray, bg_subtractor, roi_mask, args, params
+        )
+
+        if not paused:
+            tracker.update(detections, frame_id)
+
+        vis = frame.copy()
+
+        if roi_points:
+            pts = np.array(roi_points, dtype=np.int32)
+            cv2.polylines(vis, [pts], True, (0, 255, 0), 2)
+
+        for x, y in detections:
+            cv2.circle(vis, (int(x), int(y)), 5, (0, 255, 255), 2)
+
+        for track in tracker.get_tracks():
+            pts = track.positions[-20:]
+            for i in range(1, len(pts)):
+                cv2.line(vis, tuple(map(int, pts[i-1])), tuple(map(int, pts[i])), (255, 0, 0), 1)
+            if pts:
+                cv2.putText(vis, str(track.id), tuple(map(int, pts[-1])),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 0, 0), 1)
+
+        info = (
+            f"Frame {frame_id} | det {len(detections)} | "
+            f"active {len(tracker.get_tracks())} | total {len(tracker.get_all_tracks())}"
+        )
+        cv2.putText(vis, info, (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+        cv2.putText(vis, "p=pause  s=save  r=rewind  q=quit", (10, 55),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 2)
+
+        mask_bgr = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+        h = min(vis.shape[0], mask_bgr.shape[0], 900)
+        vis_small = cv2.resize(vis, (int(vis.shape[1] * h / vis.shape[0]), h))
+        mask_small = cv2.resize(mask_bgr, (int(mask_bgr.shape[1] * h / mask_bgr.shape[0]), h))
+        combined = np.hstack([vis_small, mask_small])
+
+        cv2.imshow("Tracking Tuning: detections/tracks | mask", combined)
+        key = cv2.waitKey(30 if not paused else 100) & 0xFF
+
+        if key in [ord('q'), 27]:
+            break
+        elif key == ord('p'):
+            paused = not paused
+        elif key == ord('r'):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            tracker = AntTracker(max_distance=params["max_distance"], max_gap=params["max_gap"])
+            prev_gray = None
+            paused = False
+            print("Rewound video and reset temporary tuning tracker.")
+        elif key == ord('s'):
+            os.makedirs(args.output, exist_ok=True)
+            save_path = os.path.join(args.output, "config_tuned.json")
+            _save_tuned_config(args, roi_points, params, save_path)
+
+        if not paused:
+            prev_gray = gray.copy()
+
+    try:
+        cv2.destroyWindow("Tuning Controls")
+        cv2.destroyWindow("Tracking Tuning: detections/tracks | mask")
+    except Exception:
+        cv2.destroyAllWindows()
+    print("Exited tuning mode.")
+
+
+
+def _option_supplied(option_name):
+    """Return True if a command-line option was explicitly supplied."""
+    return option_name in sys.argv
+
+
+def _config_param(config, old_key=None, new_key=None, default=None):
+    """Read a parameter from either original config.json or tuning config_tuned.json."""
+    params = config.get('parameters', {})
+    if old_key is not None and old_key in params:
+        return params[old_key]
+    if new_key is not None and new_key in params:
+        return params[new_key]
+    return default
+
+
+def _apply_config_with_cli_overrides(args, config):
+    """
+    Apply config values, but keep any values explicitly supplied on the command line.
+    Supports both the original config.json format and config_tuned.json format.
+    """
+    # Method
+    if not _option_supplied('--method'):
+        args.method = _config_param(config, 'method', 'method', args.method)
+
+    # Brightness
+    if not _option_supplied('--brightness'):
+        args.brightness = _config_param(config, 'brightness_threshold', 'brightness', args.brightness)
+
+    # Areas and threshold
+    if not _option_supplied('--min-area'):
+        args.min_area = _config_param(config, 'min_area', 'min_area', args.min_area)
+    if not _option_supplied('--max-area'):
+        args.max_area = _config_param(config, 'max_area', 'max_area', args.max_area)
+    if not _option_supplied('--threshold'):
+        args.threshold = _config_param(config, 'motion_threshold', 'threshold', args.threshold)
+
+    # Dark filter: original config stores dark_filter, tuned config stores no_dark_filter
+    if not _option_supplied('--no-dark-filter'):
+        params = config.get('parameters', {})
+        if 'dark_filter' in params:
+            args.no_dark_filter = not bool(params['dark_filter'])
+        elif 'no_dark_filter' in params:
+            args.no_dark_filter = bool(params['no_dark_filter'])
+
+    # Tracking and shape parameters
+    if not _option_supplied('--max-distance'):
+        args.max_distance = _config_param(config, 'max_distance', 'max_distance', args.max_distance)
+    if not _option_supplied('--max-gap'):
+        args.max_gap = _config_param(config, 'max_gap', 'max_gap', args.max_gap)
+    if not _option_supplied('--skip-frames'):
+        args.skip_frames = _config_param(config, 'skip_frames', 'skip_frames', args.skip_frames)
+    if not _option_supplied('--max-aspect-ratio'):
+        args.max_aspect_ratio = _config_param(config, 'max_aspect_ratio', 'max_aspect_ratio', args.max_aspect_ratio)
+    if not _option_supplied('--min-circularity'):
+        args.min_circularity = _config_param(config, 'min_circularity', 'min_circularity', args.min_circularity)
+    if not _option_supplied('--merge-distance'):
+        args.merge_distance = _config_param(config, 'merge_distance', 'merge_distance', args.merge_distance)
+
+    # Calibration: config can store this either as top-level calibration or parameters
+    if not _option_supplied('--cm-per-pixel'):
+        cal = config.get('calibration', {})
+        if isinstance(cal, dict) and cal.get('cm_per_pixel') is not None:
+            args.cm_per_pixel = cal.get('cm_per_pixel')
+        elif config.get('cm_per_pixel') is not None:
+            args.cm_per_pixel = config.get('cm_per_pixel')
+
+    # Verbose: command-line --verbose should turn it on even if config says False
+    if not _option_supplied('--verbose'):
+        args.verbose = _config_param(config, 'verbose', 'verbose', args.verbose)
+
+    return args
+
+def main():
+    args = parse_arguments()
+    config_obj = None
+
+    # Load config if provided.
+    # Config values are used as defaults, but command-line options explicitly supplied
+    # by the user override the config. This makes it easy to reuse an ROI/calibration
+    # while testing new detection and tracking parameters.
+    if args.config:
+        config = load_config(args.config)
+        config_obj = config
+        args = _apply_config_with_cli_overrides(args, config)
+        # Use stored calibration unless explicitly overridden by command line
+        if args.cm_per_pixel is None and config.get('calibration'):
+            args.cm_per_pixel = config['calibration'].get('cm_per_pixel')
+
+    print("\n" + "="*70)
+    print("ANT TRACKING FROM VIDEO")
+    print("="*70)
+    print(f"\nVideo: {args.video_path}")
+    print(f"Method: {args.method.upper()}")
+    print(f"Brightness threshold: {args.brightness}")
+    print(f"Min area: {args.min_area}, Max area: {args.max_area}")
+    print(f"Motion threshold: {args.threshold}")
+    if args.max_aspect_ratio is not None:
+        print(f"Max aspect ratio: {args.max_aspect_ratio}")
+    if args.min_circularity is not None:
+        print(f"Min circularity: {args.min_circularity}")
+    print(f"Merge distance: {args.merge_distance}")
+    print(f"Verbose diagnostics: {args.verbose}")
+    print(f"Output directory: {args.output}")
+    print(f"Tuning mode: {args.tune}")
+    print("="*70)
+
+    # Create output directory
+    os.makedirs(args.output, exist_ok=True)
+
+    # Open video
+    cap = cv2.VideoCapture(args.video_path)
+    if not cap.isOpened():
+        print(f"Cannot open video: {args.video_path}")
+        return
+
+    ret, frame = cap.read()
+    if not ret:
+        print("Cannot read video")
+        return
+
+    height, width = frame.shape[:2]
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    print(f"\nVideo: {width}x{height}, {fps:.1f} fps, {total_frames} frames")
+
+    # ROI selection or restoration from config.json
+    # If --config is used and the configuration contains an ROI, the saved ROI
+    # is restored automatically. Otherwise, the user selects a new ROI.
+    if config_obj is not None and config_obj.get('roi') is not None and not args.ignore_config_roi:
+        roi_points = [(int(p[0]), int(p[1])) for p in config_obj['roi']]
+        roi_mask = roi_points_to_mask(frame.shape, roi_points)
+        if roi_mask is None:
+            raise ValueError("ROI stored in config.json could not be converted to a mask.")
+        print(f"ROI restored from config.json with {len(roi_points)} points")
+    else:
+        if config_obj is not None and args.ignore_config_roi:
+            print("Configuration loaded, but ROI ignored. Please select a new ROI.")
+        roi_mask, roi_points = select_roi(frame)
+
+    if roi_mask is not None:
+        print(f"ROI selected with {len(roi_points)} points")
+        # Preview ROI
+        preview = frame.copy()
+        pts = np.array(roi_points, dtype=np.int32)
+        cv2.polylines(preview, [pts], True, (0, 255, 0), 2)
+        cv2.putText(preview, "ROI selected/restored - Press any key to continue", (10, 30),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        cv2.imshow("ROI Preview", preview)
+        cv2.waitKey(0)
+        cv2.destroyWindow("ROI Preview")
+    else:
+        print("No ROI selected - using full frame")
+
+    # Spatial calibration
+    cm_per_pixel = None
+    calibration = None
+    if args.no_calibration:
+        print("Spatial calibration disabled. Results will be saved in pixels only.")
+    elif args.cm_per_pixel is not None:
+        cm_per_pixel = float(args.cm_per_pixel)
+        calibration = {
+            'method': 'manual_factor',
+            'cm_per_pixel': cm_per_pixel
+        }
+        print(f"Using supplied calibration: cm_per_pixel = {cm_per_pixel:.8f}")
+    else:
+        print("\nSPATIAL CALIBRATION")
+        print("Click two points with a known real-world separation, or press ESC/ENTER without a distance to skip.")
+        cm_per_pixel, calibration = calibrate_two_points(frame, args.calibration_distance_cm)
+
+    # Initialize
+    if args.method == 'mog2':
+        fgbg = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=args.threshold)
+    else:
+        fgbg = None
+
+    tracker = AntTracker(max_distance=args.max_distance, max_gap=args.max_gap)
+    frame_id = 0
+    STABILIZATION = 30 if args.method == 'mog2' else 0
+
+    # For saving positions
+    all_positions = []
+    prev_frame = None
+
+    # Interactive tuning mode: after ROI and calibration, before batch processing.
+    if args.tune:
+        run_interactive_tuning(cap, frame, roi_mask, roi_points, args)
+        return
+
+    print(f"\nProcessing...")
+    print(f"Tracking parameters: max_distance={args.max_distance}, max_gap={args.max_gap}")
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # Skip frames for speed
+        if frame_id % args.skip_frames != 0 and frame_id > STABILIZATION:
+            frame_id += 1
+            continue
+
+        # Stabilization
+        if frame_id < STABILIZATION:
+            if fgbg:
+                fgbg.apply(frame)
+            frame_id += 1
+            continue
+
+        # Apply ROI mask
+        if roi_mask is not None:
+            frame_masked = cv2.bitwise_and(frame, frame, mask=roi_mask)
+        else:
+            frame_masked = frame
+
+        # Motion detection
+        if args.method == 'mog2':
+            fgmask = fgbg.apply(frame_masked)
+        else:  # framediff
+            if prev_frame is None:
+                prev_frame = frame_masked.copy()
+                frame_id += 1
+                continue
+            gray = cv2.cvtColor(frame_masked, cv2.COLOR_BGR2GRAY)
+            gray_prev = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
+            diff = cv2.absdiff(gray, gray_prev)
+            _, fgmask = cv2.threshold(diff, args.threshold, 255, cv2.THRESH_BINARY)
+            prev_frame = frame_masked.copy()
+
+        # Dark color filter
+        if not args.no_dark_filter:
+            hsv = cv2.cvtColor(frame_masked, cv2.COLOR_BGR2HSV)
+            mask_dark = cv2.inRange(hsv, np.array([0, 0, 0]), np.array([180, 255, args.brightness]))
+            fgmask = cv2.bitwise_and(fgmask, mask_dark)
+
+        # Apply ROI to mask if needed
+        if roi_mask is not None:
+            fgmask = cv2.bitwise_and(fgmask, roi_mask)
+
+        # Clean up mask
+        kernel = np.ones((3, 3), np.uint8)
+        fgmask = cv2.medianBlur(fgmask, 5)
+        fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_OPEN, kernel)
+        fgmask = cv2.morphologyEx(fgmask, cv2.MORPH_CLOSE, kernel)
+
+        # Find detections
+        contours, _ = cv2.findContours(fgmask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        detections = []
+        for cnt in contours:
+            area, aspect_ratio, circularity = contour_shape_metrics(cnt)
+
+            if not (args.min_area < area < args.max_area):
+                continue
+
+            # Optional shape filters. These are useful for rejecting long,
+            # thin grass stems or cloud/shadow fragments while keeping compact ants.
+            if args.max_aspect_ratio is not None and aspect_ratio > args.max_aspect_ratio:
+                continue
+            if args.min_circularity is not None and circularity < args.min_circularity:
+                continue
+
+            M = cv2.moments(cnt)
+            if M["m00"] != 0:
+                x = int(M["m10"] / M["m00"])
+                y = int(M["m01"] / M["m00"])
+                # Double-check ROI if needed
+                if roi_mask is None or roi_mask[y, x] > 0:
+                    detections.append((x, y))
+
+        # Merge close detections (prevents head/abdomen double counting)
+        detections = merge_close_detections(detections, max_distance=args.merge_distance, verbose=args.verbose)
+        # Update tracker
+        tracker.update(detections, frame_id)
+
+        # Save positions with frame number
+        for (x, y) in detections:
+            if cm_per_pixel is not None:
+                x_cm, y_cm = pixel_to_cm(x, y, cm_per_pixel)
+                all_positions.append([frame_id, x, y, x_cm, y_cm])
+            else:
+                all_positions.append([frame_id, x, y])
+
+        # Display
+        if args.display:
+            display = create_visualization(frame_masked, fgmask, detections, tracker,
+                                          frame_id, fps, args)
+            cv2.imshow('Ant Tracking - Press q to quit', display)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+        frame_id += 1
+        if frame_id % 500 == 0:
+            print(f"  Frame {frame_id}/{total_frames} | Active tracks: {len(tracker.tracks)} | Total tracks: {len(tracker.get_all_tracks())} | Positions: {len(all_positions)}")
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+    # ===== SAVE RESULTS =====
+    print("\n" + "="*70)
+    print("SAVING RESULTS")
+    print("="*70)
+
+    # Save positions with frame numbers
+    if cm_per_pixel is not None:
+        df = pd.DataFrame(all_positions, columns=['frame', 'x', 'y', 'x_cm', 'y_cm'])
+    else:
+        df = pd.DataFrame(all_positions, columns=['frame', 'x', 'y'])
+    positions_file = os.path.join(args.output, "ant_positions.csv")
+    df.to_csv(positions_file, index=False)
+    print(f"  Saved: {positions_file} ({len(df)} positions)")
+
+    # Save configuration
+    save_config(args.output, args, roi_points, calibration)
+
+    # Save track statistics (summary per track)
+    track_data = []
+    for track in tracker.get_all_tracks():
+        track_data.append({
+            'track_id': track.id,
+            'num_positions': len(track.positions),
+            'first_frame': track.frames[0],
+            'last_frame': track.frames[-1],
+            'duration': track.frames[-1] - track.frames[0] if len(track.frames) > 1 else 0
+        })
+    if track_data:
+        df_tracks = pd.DataFrame(track_data)
+        df_tracks.to_csv(os.path.join(args.output, "track_stats.csv"), index=False)
+        print(f"  Saved: {args.output}/track_stats.csv")
+
+    # Save full track data (for TrackAnalysis.py)
+    track_records = []
+    for track in tracker.get_all_tracks():
+        for frame, (x, y) in zip(track.frames, track.positions):
+            record = {
+                'track_id': track.id,
+                'frame': frame,
+                'x': x,
+                'y': y
+            }
+            if cm_per_pixel is not None:
+                x_cm, y_cm = pixel_to_cm(x, y, cm_per_pixel)
+                record['x_cm'] = x_cm
+                record['y_cm'] = y_cm
+            track_records.append(record)
+
+    if track_records:
+        df_tracks_full = pd.DataFrame(track_records)
+        df_tracks_full.to_csv(os.path.join(args.output, "ant_tracks.csv"), index=False)
+        print(f"  Saved: {args.output}/ant_tracks.csv ({len(track_records)} positions)")
+
+    # Save detection summary
+    summary = {
+        'timestamp': datetime.now().isoformat(),
+        'video_file': args.video_path,
+        'total_frames_processed': frame_id,
+        'total_positions': len(all_positions),
+        'num_tracks': len(tracker.get_all_tracks()),
+        'num_active_tracks_end': len(tracker.tracks),
+        'avg_positions_per_frame': len(all_positions) / max(1, frame_id),
+        'calibration': calibration,
+        'params_used': {
+            'method': args.method,
+            'brightness': args.brightness,
+            'min_area': args.min_area,
+            'max_area': args.max_area,
+            'threshold': args.threshold,
+            'max_distance': args.max_distance,
+            'max_gap': args.max_gap,
+            'skip_frames': args.skip_frames,
+            'max_aspect_ratio': args.max_aspect_ratio,
+            'min_circularity': args.min_circularity,
+            'merge_distance': args.merge_distance
+        }
+    }
+
+    with open(os.path.join(args.output, "summary.json"), 'w') as f:
+        json.dump(summary, f, indent=2)
+    print(f"  Saved: {args.output}/summary.json")
+
+
+    print("\n" + "="*70)
+    print("COMPLETE!")
+    print("="*70)
+    print(f"\nResults saved to: {args.output}/")
+    print(f"\nNext steps:")
+    print(f"  1. Run analysis: python AntTrajectoryAnalysis.py {track_file}")
+    print(f"  2. Or with saved config: python AntTracking_V1.0.py {args.video_path} --config {args.output}/config.json --display")
+    print("="*70)
+
+
+if __name__ == "__main__":
+    main()
