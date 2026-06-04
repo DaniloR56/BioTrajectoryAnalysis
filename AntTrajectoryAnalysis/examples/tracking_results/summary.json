@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-06-04T09:13:26.830256",
+  "video_file": "SampleVideo.mov",
+  "total_frames_processed": 1119,
+  "total_positions": 23708,
+  "num_tracks": 1291,
+  "num_active_tracks_end": 56,
+  "avg_positions_per_frame": 21.186773905272563,
+  "calibration": {
+    "method": "manual_factor",
+    "cm_per_pixel": 0.027607361963190184
+  },
+  "params_used": {
+    "method": "framediff",
+    "brightness": 150,
+    "min_area": 6,
+    "max_area": 250,
+    "threshold": 18,
+    "max_distance": 45,
+    "max_gap": 10,
+    "skip_frames": 1,
+    "max_aspect_ratio": 5.0,
+    "min_circularity": 0.08,
+    "merge_distance": 25.0
+  }
+}

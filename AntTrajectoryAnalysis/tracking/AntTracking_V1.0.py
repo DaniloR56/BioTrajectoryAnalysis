@@ -1362,7 +1362,7 @@ def main():
     print("="*70)
     print(f"\nResults saved to: {args.output}/")
     print(f"\nNext steps:")
-    print(f"  1. Run analysis: python AntTrajectoryAnalysis.py {track_file}")
+    print(f"  1. Run analysis: python AntTrajectoryAnalysis_V1.0.py " f"{args.output}/ant_tracks.csv")
     print(f"  2. Or with saved config: python AntTracking_V1.0.py {args.video_path} --config {args.output}/config.json --display")
     print("="*70)
 

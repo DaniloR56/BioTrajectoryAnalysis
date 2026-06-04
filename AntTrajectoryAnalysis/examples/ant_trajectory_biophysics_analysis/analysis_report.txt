@@ -1,0 +1,56 @@
+================================================================================
+ANT TRAJECTORY ANALYSIS REPORT
+Biophysics/statistical-physics framing
+================================================================================
+Script version: biophysics_reframed_2026_05_27
+Input file: tracking_results/ant_tracks.csv
+Coordinate unit: cm
+cm_per_pixel: 0.027607362
+Total positions: 23,708
+
+1. SPATIAL EXPLORATION AND MONTE CARLO AREA
+--------------------------------------------------------------------------------
+Convex hull area: 454.3026 cm^2
+Convex hull perimeter: 116.7513 cm
+Circularity index: 0.4188 (1 = perfect circle)
+Grid visited area: 436.2326 cm^2
+Grid cell size: 1.0430 cm
+Monte Carlo area: 453.3648 cm^2
+Monte Carlo 95% CI: [452.3860, 454.3437] cm^2
+Fraction of random points inside hull: 0.9428
+
+2. PCA ANISOTROPY
+--------------------------------------------------------------------------------
+Eigenvalue 1: 144.227 cm^2
+Eigenvalue 2: 4.46624 cm^2
+Anisotropy ratio lambda1/lambda2: 32.2926
+Principal orientation: 179.25 degrees
+Explained variance PC1: 97.00%
+Explained variance PC2: 3.00%
+
+3. DIRECTIONAL STATISTICS
+--------------------------------------------------------------------------------
+Number of displacement vectors: 22,357
+Mean direction: -23.44 degrees
+Mean resultant length: 0.0134
+Rayleigh p-value: 1.8281e-02
+
+4. STOCHASTIC TRAJECTORY DESCRIPTORS
+--------------------------------------------------------------------------------
+Turning angles computed: 21,184
+Mean turning angle: 66.31 degrees
+Median turning angle: 52.51 degrees
+MSD exponent beta: 1.3492
+Straightness tracks analysed: 890
+Mean straightness: 0.4245
+Median straightness: 0.3956
+Fractal dimension D: 1.6850
+
+INTERPRETATION
+--------------------------------------------------------------------------------
+The analysis treats ant trajectories as experimentally acquired stochastic
+samples of space. Monte Carlo sampling estimates the explored irregular
+domain, while PCA and directional statistics quantify anisotropy and
+preferred directions of motion. These quantities provide a compact
+framework for comparing biological motion with ideal isotropic random walks.
+================================================================================

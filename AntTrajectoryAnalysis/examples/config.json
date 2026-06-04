@@ -1,0 +1,41 @@
+{
+  "timestamp": "2026-06-03T08:26:05.451637",
+  "video_file": "./SampleVideo.mov",
+  "parameters": {
+    "method": "framediff",
+    "brightness_threshold": 150,
+    "min_area": 6,
+    "max_area": 250,
+    "motion_threshold": 18,
+    "dark_filter": true,
+    "max_distance": 45,
+    "max_gap": 10,
+    "skip_frames": 1,
+    "max_aspect_ratio": 5.0,
+    "min_circularity": 0.08,
+    "merge_distance": 25.0,
+    "verbose": false
+  },
+  "roi": [
+    [
+      12,
+      388
+    ],
+    [
+      1904,
+      388
+    ],
+    [
+      1904,
+      725
+    ],
+    [
+      12,
+      725
+    ]
+  ],
+  "calibration": {
+    "method": "manual_factor",
+    "cm_per_pixel": 0.027607361963190184
+  }
+}

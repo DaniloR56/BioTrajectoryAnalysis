@@ -1,0 +1,34 @@
+{
+  "script_version": "biophysics_reframed_2026_05_27",
+  "input_file": "tracking_results/ant_tracks.csv",
+  "unit": "cm",
+  "cm_per_pixel": 0.027607361963190188,
+  "n_positions": 23708,
+  "convex_hull_area": 454.30264123602694,
+  "convex_hull_perimeter": 116.75131022799349,
+  "circularity": 0.41882403795497114,
+  "grid_visited_area": 436.2325808310439,
+  "grid_cell_size": 1.0430061349693254,
+  "monte_carlo_area": 453.36482043735174,
+  "monte_carlo_ci95": [
+    452.38599079236906,
+    454.3436500823344
+  ],
+  "pca_eigenvalues": [
+    144.22653120795286,
+    4.466237180750472
+  ],
+  "anisotropy_ratio": 32.29262696337997,
+  "pca_angle_deg": 179.24532871888928,
+  "pca_explained_variance": [
+    0.969963319473109,
+    0.03003668052689095
+  ],
+  "mean_direction_deg": -23.439008250368023,
+  "mean_resultant_length": 0.013378952215821556,
+  "rayleigh_p": 0.01828066634438152,
+  "mean_turning_angle_deg": 66.3101513288709,
+  "msd_beta": 1.3492206153422033,
+  "mean_straightness": 0.42454532880564005,
+  "fractal_dimension": 1.6850232792288857
+}
