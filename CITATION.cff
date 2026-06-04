@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+title: BioTrajectoryAnalysis
+authors:
+  - family-names: Roccatano
+    given-names: Danilo
+affiliation: University of Lincoln
+date-released: 2026-06-01
+license: MIT
