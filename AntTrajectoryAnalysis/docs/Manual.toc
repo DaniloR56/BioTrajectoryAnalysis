@@ -1,34 +1,45 @@
 \contentsline {section}{\numberline {1}Introduction}{2}{section.1}%
-\contentsline {section}{\numberline {2}Workflow}{2}{section.2}%
-\contentsline {section}{\numberline {3}Installation}{2}{section.3}%
-\contentsline {section}{\numberline {4}Trajectory Extraction}{3}{section.4}%
-\contentsline {subsection}{\numberline {4.1}Overview}{3}{subsection.4.1}%
-\contentsline {subsection}{\numberline {4.2}Basic Usage}{3}{subsection.4.2}%
-\contentsline {subsection}{\numberline {4.3}Example}{3}{subsection.4.3}%
-\contentsline {subsection}{\numberline {4.4}Important Parameters}{3}{subsection.4.4}%
-\contentsline {section}{\numberline {5}Output Files}{4}{section.5}%
-\contentsline {section}{\numberline {6}Trajectory Analysis}{4}{section.6}%
-\contentsline {subsection}{\numberline {6.1}Overview}{4}{subsection.6.1}%
-\contentsline {subsection}{\numberline {6.2}Basic Usage}{4}{subsection.6.2}%
-\contentsline {subsection}{\numberline {6.3}Example}{4}{subsection.6.3}%
-\contentsline {section}{\numberline {7}Generated Figures}{4}{section.7}%
-\contentsline {subsection}{\numberline {7.1}Spatial Exploration and Anisotropy}{5}{subsection.7.1}%
-\contentsline {subsection}{\numberline {7.2}Occupancy Maps}{5}{subsection.7.2}%
-\contentsline {subsection}{\numberline {7.3}Monte Carlo Area Estimation}{5}{subsection.7.3}%
-\contentsline {subsection}{\numberline {7.4}Trajectory Statistics}{5}{subsection.7.4}%
-\contentsline {section}{\numberline {8}Statistical Descriptors}{5}{section.8}%
-\contentsline {subsection}{\numberline {8.1}Explored Area}{5}{subsection.8.1}%
-\contentsline {subsection}{\numberline {8.2}Occupancy Maps}{5}{subsection.8.2}%
-\contentsline {subsection}{\numberline {8.3}Principal Component Analysis}{5}{subsection.8.3}%
-\contentsline {subsection}{\numberline {8.4}Mean Squared Displacement}{5}{subsection.8.4}%
-\contentsline {subsection}{\numberline {8.5}Straightness}{5}{subsection.8.5}%
-\contentsline {subsection}{\numberline {8.6}Fractal Dimension}{5}{subsection.8.6}%
-\contentsline {section}{\numberline {9}Applications}{6}{section.9}%
-\contentsline {section}{\numberline {10}Worked Example}{6}{section.10}%
-\contentsline {subsection}{\numberline {10.1}Running the analysis}{6}{subsection.10.1}%
-\contentsline {subsection}{\numberline {10.2}Example analysis report}{7}{subsection.10.2}%
-\contentsline {subsection}{\numberline {10.3}Generated output files}{7}{subsection.10.3}%
-\contentsline {subsection}{\numberline {10.4}Example figures}{7}{subsection.10.4}%
-\contentsline {subsection}{\numberline {10.5}Interpretation}{8}{subsection.10.5}%
-\contentsline {section}{\numberline {11}Citation}{8}{section.11}%
-\contentsline {section}{\numberline {12}License}{8}{section.12}%
+\contentsline {section}{\numberline {2}Software Architecture}{2}{section.2}%
+\contentsline {section}{\numberline {3}Workflow}{3}{section.3}%
+\contentsline {section}{\numberline {4}Installation}{3}{section.4}%
+\contentsline {section}{\numberline {5}Trajectory Extraction}{4}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Overview}{4}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Basic Usage}{4}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}Example}{4}{subsection.5.3}%
+\contentsline {subsection}{\numberline {5.4}Important Parameters}{4}{subsection.5.4}%
+\contentsline {section}{\numberline {6}Output Files}{5}{section.6}%
+\contentsline {section}{\numberline {7}Trajectory Data Format}{5}{section.7}%
+\contentsline {section}{\numberline {8}Trajectory Analysis}{5}{section.8}%
+\contentsline {subsection}{\numberline {8.1}Overview}{5}{subsection.8.1}%
+\contentsline {subsection}{\numberline {8.2}Basic Usage}{6}{subsection.8.2}%
+\contentsline {subsection}{\numberline {8.3}Example}{6}{subsection.8.3}%
+\contentsline {section}{\numberline {9}Generated Figures}{6}{section.9}%
+\contentsline {subsection}{\numberline {9.1}Spatial Exploration and Anisotropy}{6}{subsection.9.1}%
+\contentsline {subsection}{\numberline {9.2}Occupancy Maps}{6}{subsection.9.2}%
+\contentsline {subsection}{\numberline {9.3}Monte Carlo Area Estimation}{6}{subsection.9.3}%
+\contentsline {subsection}{\numberline {9.4}Trajectory Statistics}{6}{subsection.9.4}%
+\contentsline {section}{\numberline {10}Statistical Descriptors}{6}{section.10}%
+\contentsline {subsection}{\numberline {10.1}Explored Area}{6}{subsection.10.1}%
+\contentsline {subsection}{\numberline {10.2}Occupancy Maps}{6}{subsection.10.2}%
+\contentsline {subsection}{\numberline {10.3}Principal Component Analysis}{7}{subsection.10.3}%
+\contentsline {subsection}{\numberline {10.4}Mean Squared Displacement}{7}{subsection.10.4}%
+\contentsline {subsection}{\numberline {10.5}Straightness}{7}{subsection.10.5}%
+\contentsline {subsection}{\numberline {10.6}Fractal Dimension}{7}{subsection.10.6}%
+\contentsline {section}{\numberline {11}Mathematical Background}{7}{section.11}%
+\contentsline {subsection}{\numberline {11.1}Mean Squared Displacement}{7}{subsection.11.1}%
+\contentsline {subsection}{\numberline {11.2}Principal Component Analysis}{7}{subsection.11.2}%
+\contentsline {subsection}{\numberline {11.3}Convex Hull Area}{7}{subsection.11.3}%
+\contentsline {subsection}{\numberline {11.4}Monte Carlo Area Estimation}{8}{subsection.11.4}%
+\contentsline {subsection}{\numberline {11.5}Fractal Dimension}{8}{subsection.11.5}%
+\contentsline {section}{\numberline {12}Output Directory Structure}{8}{section.12}%
+\contentsline {section}{\numberline {13}Applications}{8}{section.13}%
+\contentsline {section}{\numberline {14}Worked Example}{9}{section.14}%
+\contentsline {subsection}{\numberline {14.1}Running the analysis}{9}{subsection.14.1}%
+\contentsline {subsection}{\numberline {14.2}Example analysis report}{9}{subsection.14.2}%
+\contentsline {subsection}{\numberline {14.3}Generated output files}{10}{subsection.14.3}%
+\contentsline {subsection}{\numberline {14.4}Example figures}{11}{subsection.14.4}%
+\contentsline {subsection}{\numberline {14.5}Interpretation}{11}{subsection.14.5}%
+\contentsline {section}{\numberline {15}Limitations}{11}{section.15}%
+\contentsline {section}{\numberline {16}Citation}{12}{section.16}%
+\contentsline {section}{\numberline {17}Future Developments}{12}{section.17}%
+\contentsline {section}{\numberline {18}License}{12}{section.18}%

@@ -37,6 +37,44 @@ The software consists of two main programs:
 \item \texttt{AntTrajectoryAnalysis\_V1.0.py} for statistical analysis.
 \end{enumerate}
 
+\section{Software Architecture}
+
+BioTrajectoryAnalysis is organized as a modular framework composed of independent tools for trajectory extraction, trajectory analysis, and visualization.
+
+The current release includes:
+
+\begin{enumerate}
+\item \texttt{AntTracking\_V1.0.py}
+\item \texttt{AntTrajectoryAnalysis\_V1.0.py}
+\end{enumerate}
+
+The modular architecture allows future extensions dedicated to other biological systems, including protozoa, rotifers, nematodes, insects, and small aquatic organisms.
+
+\vspace{0.5cm}
+
+The overall workflow is:
+
+\begin{center}
+Video Acquisition
+
+$\downarrow$
+
+Object Detection
+
+$\downarrow$
+
+Trajectory Reconstruction
+
+$\downarrow$
+
+Statistical Analysis
+
+$\downarrow$
+
+Scientific Figures and Reports
+\end{center}
+
+
 \section{Workflow}
 
 The typical workflow is:
@@ -80,6 +118,21 @@ The required packages can be installed using:
 \begin{verbatim}
 pip install -r requirements.txt
 \end{verbatim}
+
+section{Coordinate System}
+
+Video images are internally represented according to the OpenCV image convention, where the origin is located at the upper-left corner of the image.
+
+For all statistical analyses and graphical outputs, coordinates are transformed into a Cartesian coordinate system:
+
+\begin{itemize}
+\item origin located at the lower-left corner,
+\item x-axis increasing from left to right,
+\item y-axis increasing from bottom to top.
+\end{itemize}
+
+This transformation facilitates comparison with standard physical and mathematical coordinate systems.
+
 
 \section{Trajectory Extraction}
 
@@ -148,6 +201,30 @@ Typical output includes:
 \item diagnostic images
 \item tracking statistics
 \end{itemize}
+
+\section{Trajectory Data Format}
+
+Trajectory data are stored in CSV format.
+
+A typical file contains:
+
+\begin{verbatim}
+track_id,frame,x,y
+1,0,123.4,201.7
+1,1,124.2,202.3
+1,2,125.0,203.1
+\end{verbatim}
+
+where:
+
+\begin{description}
+\item[track\_id] trajectory identifier.
+\item[frame] video frame number.
+\item[x] horizontal coordinate.
+\item[y] vertical coordinate.
+\end{description}
+
+Coordinates may be expressed either in pixels or physical units depending on the calibration settings.
 
 \section{Trajectory Analysis}
 
@@ -218,6 +295,8 @@ Includes:
 
 \section{Statistical Descriptors}
 
+
+
 \subsection{Explored Area}
 
 Estimated using the convex hull of all recorded positions.
@@ -242,7 +321,124 @@ Measures path tortuosity.
 
 Quantifies the complexity and space-filling properties of trajectories.
 
+
+\section{Mathematical Background}
+
+\subsection{Mean Squared Displacement}
+
+The Mean Squared Displacement (MSD) is defined as
+
+\begin{equation}
+MSD(\tau)=
+\left<
+|\mathbf r(t+\tau)-\mathbf r(t)|^2
+\right>.
+\end{equation}
+
+For many biological systems, the MSD follows a power law
+\begin{equation}
+MSD(\tau)\propto\tau^\beta.
+\end{equation}
+
+The exponent $\beta$ characterizes the transport regime:
+
+\begin{itemize}
+\item $\beta<1$ : subdiffusive motion,
+\item $\beta=1$ : normal diffusion,
+\item $\beta>1$ : superdiffusive motion.
+\end{itemize}
+
+\subsection{Principal Component Analysis}
+
+Principal Component Analysis (PCA) determines the principal axes of spatial exploration.
+
+The covariance matrix
+\begin{equation}
+C= \begin{bmatrix}
+\sigma_x^2 & \sigma_{xy}\\
+\sigma_{xy} & \sigma_y^2
+\end{bmatrix}
+\end{equation}
+
+is diagonalized to obtain eigenvalues $\lambda_1$ and $\lambda_2$.
+
+The anisotropy ratio is defined as
+\begin{equation}
+A=\frac{\lambda_1}{\lambda_2}.
+\end{equation}
+
+Values significantly larger than unity indicate strongly anisotropic exploration.
+
+\subsection{Convex Hull Area}
+
+The explored region is estimated from the convex hull enclosing all recorded positions.
+
+The convex hull provides a simple estimate of the maximum explored area.
+
+\subsection{Monte Carlo Area Estimation}
+
+A Monte Carlo procedure is used to estimate the explored area.
+
+Random points are generated inside the bounding box and classified according to whether they fall inside or outside the convex hull.
+
+The area estimate is
+\begin{equation}
+A_{MC}= A_{box} \frac{N_{inside}} {N_{total}}.
+\end{equation}
+
+Confidence intervals are computed from the associated binomial statistics.
+
+\subsection{Fractal Dimension}
+
+The fractal dimension provides a measure of trajectory complexity and space-filling behavior.
+
+Values approaching one correspond to nearly straight trajectories, whereas larger values indicate increasingly tortuous paths.
+
+\section{Output Directory Structure}
+
+A typical tracking run generates:
+
+\begin{verbatim}
+tracking_results/
+
+  |----- ant_tracks.csv
+  |----- config.json
+  |----- tracking_statistics.txt
+  |-----  diagnostic_images/
+\end{verbatim}
+
+A typical analysis run generates:
+
+\begin{verbatim}
+analysis_results/
+
+  |-----  analysis_report.txt
+  |-----  analysis_results.json
+  |----- spatial_exploration_anisotropy.pdf
+  |----- density_heatmap.pdf
+  |----- trajectory_statistics.pdf
+  |-----  monte_carlo_area.pdf
+\end{verbatim}
+
 \section{Applications}
+
+Although originally developed for ant foraging studies, the software can be applied to a broad range of biological systems.
+
+Examples include:
+
+\begin{itemize}
+\item Ants and social insects
+\item Protozoa
+\item Rotifers
+\item Nematodes
+\item Slugs and snails
+\item Small aquatic organisms
+\item Experimental active-matter systems
+\item Artificial agents and robotic swarms
+\end{itemize}
+
+The software is particularly suitable for educational projects, movement ecology studies, and statistical-physics investigations of biological motion.
+
 \section{Worked Example}
 
 This section illustrates a complete analysis starting from a trajectory file generated by the tracking program.
@@ -345,10 +541,36 @@ The generated figures summarize different aspects of the trajectory dataset.
 
 In this example, the trajectory distribution is strongly anisotropic, with an anisotropy ratio of approximately 32. The convex-hull and Monte Carlo area estimates are in close agreement, showing that the Monte Carlo method provides a reliable estimate of the explored spatial domain. The MSD exponent is larger than one, indicating superdiffusive motion, while the fractal dimension provides a measure of the space-filling character of the trajectories.
 
+\section{Limitations}
+
+The current implementation assumes two-dimensional motion within the imaging plane.
+
+Tracking accuracy may be affected by:
+
+\begin{itemize}
+\item poor image contrast,
+\item severe object overlap,
+\item strong illumination changes,
+\item out-of-plane motion.
+\end{itemize}
+
+Careful calibration and video acquisition conditions are therefore recommended.
 
 \section{Citation}
 
 If you use this software in academic work, please cite the associated publication and the BioTrajectoryAnalysis repository.
+
+\section{Future Developments}
+
+Planned developments include:
+
+\begin{itemize}
+\item machine-learning assisted tracking,
+\item multi-object interaction analysis,
+\item three-dimensional trajectory reconstruction,
+\item automated behavioral classification,
+\item support for additional biological systems.
+\end{itemize}
 
 \section{License}
 
