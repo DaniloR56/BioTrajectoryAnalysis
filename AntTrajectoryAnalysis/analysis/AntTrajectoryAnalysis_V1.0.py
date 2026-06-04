@@ -1,121 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
-# =============================================================================
-# AntTrajectoryAnalysis_V1.0.py
-# =============================================================================
-#
-# Statistical Analysis of Biological Trajectories
-#
-# This program analyses trajectory files produced by AntTracking_V1.0.py.
-# It computes geometric, statistical-physics, and trajectory-based
-# descriptors of biological motion, with particular application to ant
-# foraging trajectories recorded in natural environments.
-#
-# Developed as part of the project:
-#
-# "Quantitative Analysis of Biological Trajectories Using Computer Vision
-# and Statistical Physics: An Application to Ant Motion"
-#
-# Main Features
-# -------------
-# - Import tracked positions from CSV files
-# - Convert pixel coordinates to physical units
-# - Estimate explored area using convex hulls
-# - Estimate area using Monte Carlo sampling
-# - Generate spatial occupancy maps
-# - Quantify anisotropy using Principal Component Analysis (PCA)
-# - Compute directional statistics
-# - Compute Mean Squared Displacement (MSD)
-# - Compute straightness indices
-# - Estimate fractal dimension using box counting
-# - Generate publication-quality figures
-# - Export analysis reports and summary tables
-#
-# Input
-# -----
-# - ant_tracks.csv or ant_positions.csv
-# - Optional calibration factor in cm/pixel
-#
-# Output
-# ------
-# - analysis_report.txt
-# - analysis_results.json
-# - spatial_exploration_anisotropy.pdf
-# - density_heatmap.pdf
-# - trajectory_statistics.pdf
-# - monte_carlo_area.pdf
-# - publication-ready comparison figures
-#
-# Dependencies
-# ------------
-# Python >= 3.10
-# NumPy
-# Pandas
-# SciPy
-# Matplotlib
-# scikit-learn
-#
-# Author
-# ------
-# Danilo Roccatano
-# School of Mathematics and Physics
-# University of Lincoln
-# Lincoln, United Kingdom
-#
-# Email:
-# danilo.roccatano@gmail.com
-#
-# Version: 1.0
-# Created: 2026-05-27
-# Last Modified: 2026-06-03
-#
-# License
-# -------
-# MIT License
-#
-# GitHub Repository:
-# https://github.com/<USERNAME>/<REPOSITORY>
-#
-# Citation
-# --------
-# If you use this software in published work, please cite:
-#
-# Roccatano, D.
-# Quantitative Analysis of Biological Trajectories Using Computer Vision
-# and Statistical Physics: An Application to Ant Motion.
-#
-# =============================================================================
-
 """
-AntTrajectoryAnalysis_V1.0
+AntTrajectoryAnalysis_Biophysics.py
 
-This script performs statistical analysis of biological trajectories
-extracted from video recordings. It was developed for the analysis of ant
-motion, but the methods are general and may be applied to other organisms
-exhibiting approximately planar motion, including protozoa, rotifers,
-nematodes, and other small animals.
+Trajectory analysis script for ant foraging videos.
 
-The script computes complementary descriptors of trajectory organization:
+Main focus:
+  1. Spatial exploration and Monte Carlo area estimation
+  2. Directional statistics and anisotropy analysis
+  3. PCA and PCA-whitened coordinates
+  4. Stochastic trajectory descriptors: turning angles, MSD, straightness
+  5. Fractal/box-counting analysis of spatial exploration
 
-    - Explored area
-    - Convex hull area
-    - Monte Carlo area estimation
-    - Spatial occupancy maps
-    - PCA anisotropy
-    - Directional statistics
-    - Mean Squared Displacement
-    - Straightness index
-    - Fractal dimension
+The script intentionally does not make pi estimation central.  It is designed
+for the revised paper framing: biological trajectories as experimentally
+accessible stochastic samplers and anisotropic motion patterns.
 
-Example
--------
-python AntTrajectoryAnalysis_V1.0.py ant_tracks.csv --output analysis_results
+Example:
+  python AntTrajectoryAnalysis_Biophysics.py ground_bg_results/ant_positions.csv \
+      --cm-per-pixel 0.02899367 --output ant_biophysics_analysis
 
-python AntTrajectoryAnalysis_V1.0.py ant_tracks.csv \
-       --cm-per-pixel 0.02 \
-       --output ant_trajectory_biophysics_analysis
-
+If the CSV already contains x_cm and y_cm columns, they are used automatically.
+Otherwise x/y pixel columns are converted if --cm-per-pixel is supplied.
 """
 
 from __future__ import annotations
@@ -143,7 +49,22 @@ SCRIPT_VERSION = "biophysics_reframed_2026_05_27"
 # -----------------------------------------------------------------------------
 
 def load_positions(csv_path: Path, cm_per_pixel: Optional[float] = None) -> Tuple[pd.DataFrame, str, Optional[float]]:
-    """Load tracking CSV and return columns x_analysis, y_analysis in a physical or pixel unit."""
+    """
+    Load tracking CSV and return columns x_analysis, y_analysis in a physical or pixel unit.
+
+    Important coordinate convention
+    -------------------------------
+    OpenCV/image coordinates have the origin in the upper-left corner and y increases
+    downward. For scientific plots we use a Cartesian-style convention with the
+    origin at the lower-left and y increasing upward. Therefore, after loading and
+    calibration, y is reflected as:
+
+        y_analysis = ymax - y_analysis
+
+    This changes only the display/orientation convention. Distances, areas,
+    anisotropy ratios, MSD, straightness, and fractal dimensions are unchanged by
+    this reflection. Only orientation angles change sign/convention.
+    """
     df = pd.read_csv(csv_path)
     cols = {c.lower(): c for c in df.columns}
 
@@ -151,6 +72,7 @@ def load_positions(csv_path: Path, cm_per_pixel: Optional[float] = None) -> Tupl
         xcol, ycol = cols["x_cm"], cols["y_cm"]
         df = df.rename(columns={xcol: "x_analysis", ycol: "y_analysis"})
         unit = "cm"
+
         # infer cm_per_pixel only if possible
         if cm_per_pixel is None and "x" in cols:
             xpx = df[cols["x"]].to_numpy(dtype=float)
@@ -159,6 +81,11 @@ def load_positions(csv_path: Path, cm_per_pixel: Optional[float] = None) -> Tupl
             dxcm = np.nanmax(xcm) - np.nanmin(xcm)
             if dxpx > 0:
                 cm_per_pixel = dxcm / dxpx
+
+        # Convert image-style y coordinates to Cartesian-style plotting coordinates.
+        ymax = df["y_analysis"].max()
+        df["y_analysis"] = ymax - df["y_analysis"]
+
         return df, unit, cm_per_pixel
 
     # Fallback to x/y columns
@@ -174,6 +101,10 @@ def load_positions(csv_path: Path, cm_per_pixel: Optional[float] = None) -> Tupl
         df["x_analysis"] = df[xcol].astype(float)
         df["y_analysis"] = df[ycol].astype(float)
         unit = "px"
+
+    # Convert image-style y coordinates to Cartesian-style plotting coordinates.
+    ymax = df["y_analysis"].max()
+    df["y_analysis"] = ymax - df["y_analysis"]
 
     return df, unit, cm_per_pixel
 
