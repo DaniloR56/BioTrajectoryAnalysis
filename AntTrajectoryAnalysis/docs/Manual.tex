@@ -30,12 +30,26 @@ BioTrajectoryAnalysis is an open-source collection of Python tools for the extra
 
 The software combines computer vision, automated tracking, and statistical-physics descriptors to characterize motion patterns in biological systems. The first module included in the project, \texttt{AntTrajectoryAnalysis}, was developed for the study of ant foraging trajectories, but the methodology can be extended to other organisms such as protozoa, rotifers, nematodes, and slugs.
 
-The software consists of two main programs:
 
-\begin{enumerate}
-\item \texttt{AntTracking\_V1.0.py}  for trajectory extraction.
-\item \texttt{AntTrajectoryAnalysis\_V1.0.py} for statistical analysis.
-\end{enumerate}
+The BioTrajectoryAnalysis project currently consists of two main Python
+programs:
+
+\begin{itemize}
+\item \texttt{AntTracking.py}: extraction of trajectories from video
+recordings using computer vision techniques.
+
+\item \texttt{AntTrajectoryAnalysis.py}: quantitative analysis of
+trajectory datasets using methods from statistical physics and movement
+ecology.
+\end{itemize}
+
+The analysis module includes occupancy maps, Monte Carlo area
+estimation, Principal Component Analysis (PCA), Mean Squared
+Displacement (MSD), straightness indices, fractal dimension estimation,
+and statistical uncertainty analysis.
+
+The results reported in the accompanying publication were generated
+using AntTrajectoryAnalysis version 1.1.
 
 \section{Software Architecture}
 
@@ -138,7 +152,7 @@ This transformation facilitates comparison with standard physical and mathematic
 
 \subsection{Overview}
 
-The program \texttt{AntTracking\_V1.0.py}  extracts trajectories from video recordings.
+The program \texttt{AntTracking.py}  extracts trajectories from video recordings.
 
 The program can:
 
@@ -160,7 +174,7 @@ python AntTracking_V1.0.py video.mov
 \subsection{Example}
 
 \begin{verbatim}
-python AntTracking_V1.0.py video.mov
+python AntTracking.py video.mov
     --threshold 18
     --min-area 6
     --max-area 250

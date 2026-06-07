@@ -1,28 +1,74 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
 """
-AntTrajectoryAnalysis_Biophysics.py
+====================================================================
+AntTrajectoryAnalysis Version 1.1
+====================================================================
 
-Trajectory analysis script for ant foraging videos.
+Author:
+    Danilo Roccatano
+    School of Engineering and Physical Sciences
+    University of Lincoln, United Kingdom
 
-Main focus:
-  1. Spatial exploration and Monte Carlo area estimation
-  2. Directional statistics and anisotropy analysis
-  3. PCA and PCA-whitened coordinates
-  4. Stochastic trajectory descriptors: turning angles, MSD, straightness
-  5. Fractal/box-counting analysis of spatial exploration
+Description:
+    Open-source Python software for the extraction and quantitative
+    analysis of biological trajectories obtained from video recordings.
 
-The script intentionally does not make pi estimation central.  It is designed
-for the revised paper framing: biological trajectories as experimentally
-accessible stochastic samplers and anisotropic motion patterns.
+    The program computes a range of statistical and geometrical
+    descriptors including:
+
+      • Spatial exploration and Monte Carlo area estimation
+      • Occupancy maps
+      • Directional statistics and anisotropy analysis
+      • Principal Component Analysis (PCA)
+      • Mean Squared Displacement (MSD)
+      • Straightness index
+      • Fractal (box-counting) dimension
+
+    The software was developed as part of the BioTrajectoryAnalysis
+    project and was used to generate the results reported in:
+
+      Roccatano, D.
+      "Computer Vision and Statistical Physics for Quantitative
+      Analysis of Biological Trajectories:
+      An Ant-Tracking Case Study"
+
+Version:
+    1.1
+
+Release date:
+    June 2026
+
+Repository:
+    https://github.com/<your-repository>
+
+License:
+    MIT License
+
+Requirements:
+    Python 3.9+
+    NumPy
+    Pandas
+    Matplotlib
+    SciPy
 
 Example:
-  python AntTrajectoryAnalysis_Biophysics.py ground_bg_results/ant_positions.csv \
-      --cm-per-pixel 0.02899367 --output ant_biophysics_analysis
+    python AntTrajectoryAnalysis_V1.1.py \
+        ground_bg_results/ant_positions.csv \
+        --cm-per-pixel 0.02899367 \
+        --output ant_biophysics_analysis
 
-If the CSV already contains x_cm and y_cm columns, they are used automatically.
-Otherwise x/y pixel columns are converted if --cm-per-pixel is supplied.
+Notes:
+    If the CSV file already contains x_cm and y_cm columns,
+    they are used automatically. Otherwise x/y pixel coordinates
+    are converted using the supplied calibration factor.
+
+====================================================================
 """
+__version__ = "1.1"
+__author__ = "Danilo Roccatano"
+__license__ = "MIT"
 
 from __future__ import annotations
 
@@ -41,7 +87,7 @@ from matplotlib.path import Path as MplPath
 from scipy.spatial import ConvexHull
 from scipy.stats import circmean, rayleigh
 
-SCRIPT_VERSION = "biophysics_reframed_2026_05_27"
+SCRIPT_VERSION = "biophysics_reframed_stats_2026_06_06"
 
 
 # -----------------------------------------------------------------------------
@@ -525,13 +571,127 @@ def plot_density(points: np.ndarray, outdir: Path, unit: str, bins: int = 200) -
     savefig(fig, outdir, "density_heatmap")
 
 
+
+# -----------------------------------------------------------------------------
+# Uncertainty estimates / bootstrap statistics
+# -----------------------------------------------------------------------------
+
+def bootstrap_ci(values: np.ndarray, statistic=np.mean, n_boot: int = 1000,
+                 ci: float = 95.0, seed: int = 12345) -> Dict:
+    """
+    Non-parametric bootstrap confidence interval for a 1D sample.
+
+    This is useful for quantities already computed per track, such as the
+    straightness index. It returns the observed statistic, bootstrap standard
+    error, and percentile confidence interval.
+    """
+    values = np.asarray(values, dtype=float)
+    values = values[np.isfinite(values)]
+    if len(values) == 0:
+        return {"value": np.nan, "se": np.nan, "ci_low": np.nan, "ci_high": np.nan, "n": 0}
+
+    rng = np.random.default_rng(seed)
+    obs = float(statistic(values))
+    boots = np.empty(n_boot, dtype=float)
+    n = len(values)
+    for i in range(n_boot):
+        sample = rng.choice(values, size=n, replace=True)
+        boots[i] = statistic(sample)
+
+    alpha = (100.0 - ci) / 2.0
+    return {
+        "value": obs,
+        "se": float(np.std(boots, ddof=1)),
+        "ci_low": float(np.percentile(boots, alpha)),
+        "ci_high": float(np.percentile(boots, 100.0 - alpha)),
+        "n": int(n),
+    }
+
+
+def linear_fit_slope_ci(x: np.ndarray, y: np.ndarray, ci: float = 95.0) -> Dict:
+    """
+    Ordinary least-squares slope and approximate confidence interval.
+
+    Used for log-log MSD slopes and box-counting fractal dimensions. The
+    confidence interval is based on the standard error of the regression slope.
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    mask = np.isfinite(x) & np.isfinite(y)
+    x, y = x[mask], y[mask]
+    if len(x) < 3:
+        return {"slope": np.nan, "intercept": np.nan, "se": np.nan,
+                "ci_low": np.nan, "ci_high": np.nan, "n": int(len(x))}
+
+    slope, intercept = np.polyfit(x, y, 1)
+    yfit = slope * x + intercept
+    residuals = y - yfit
+    dof = len(x) - 2
+    s_err = math.sqrt(np.sum(residuals**2) / dof)
+    sxx = np.sum((x - np.mean(x))**2)
+    slope_se = s_err / math.sqrt(sxx) if sxx > 0 else np.nan
+
+    # For n >= 30, 1.96 is effectively the 95% t critical value. For the
+    # present fits n is usually moderate; this approximation is adequate for
+    # reporting descriptive uncertainties in an educational-methods paper.
+    z = 1.96 if abs(ci - 95.0) < 1e-9 else 1.96
+    return {
+        "slope": float(slope),
+        "intercept": float(intercept),
+        "se": float(slope_se),
+        "ci_low": float(slope - z * slope_se),
+        "ci_high": float(slope + z * slope_se),
+        "n": int(len(x)),
+    }
+
+
+def estimate_descriptor_uncertainties(msd: Dict, fractal: Dict, straight: np.ndarray,
+                                      n_boot: int = 1000) -> Dict:
+    """
+    Collect uncertainty estimates for the descriptors most likely to be shown
+    in the manuscript table.
+    """
+    out = {}
+
+    # MSD exponent uncertainty from the same log-log range used in msd_analysis
+    lags = np.asarray(msd.get("lags", []), dtype=float)
+    vals = np.asarray(msd.get("msd", []), dtype=float)
+    valid = (lags > 0) & (vals > 0) & np.isfinite(vals)
+    if valid.sum() >= 5:
+        idx = np.where(valid)[0]
+        idx = idx[: max(5, len(idx)//2)]
+        out["msd_beta"] = linear_fit_slope_ci(np.log(lags[idx]), np.log(vals[idx]))
+    else:
+        out["msd_beta"] = {"slope": np.nan, "se": np.nan, "ci_low": np.nan, "ci_high": np.nan, "n": 0}
+
+    # Fractal dimension uncertainty from regression of log N(eps) vs log(1/eps)
+    eps = np.asarray(fractal.get("eps", []), dtype=float)
+    N = np.asarray(fractal.get("N", []), dtype=float)
+    valid = (eps > 0) & (N > 0) & np.isfinite(N)
+    if valid.sum() >= 4:
+        out["fractal_D"] = linear_fit_slope_ci(np.log(1.0 / eps[valid]), np.log(N[valid]))
+    else:
+        out["fractal_D"] = {"slope": np.nan, "se": np.nan, "ci_low": np.nan, "ci_high": np.nan, "n": 0}
+
+    # Straightness uncertainty from track-to-track variability
+    out["mean_straightness"] = bootstrap_ci(straight, statistic=np.mean, n_boot=n_boot)
+    return out
+
+
+def fmt_pm(value: float, se: float, ndigits: int = 3) -> str:
+    if not np.isfinite(value):
+        return "nan"
+    if not np.isfinite(se):
+        return f"{value:.{ndigits}f}"
+    return f"{value:.{ndigits}f} ± {se:.{ndigits}f}"
+
 # -----------------------------------------------------------------------------
 # Reporting
 # -----------------------------------------------------------------------------
 
 def write_report(outdir: Path, csv_path: Path, unit: str, cm_per_pixel: Optional[float], n_points: int,
                  hull: Dict, grid: Dict, mc: Dict, pca: Dict, directional: Dict,
-                 phi: np.ndarray, msd: Dict, straight: np.ndarray, fractal: Dict) -> None:
+                 phi: np.ndarray, msd: Dict, straight: np.ndarray, fractal: Dict, uncertainty: Optional[Dict] = None) -> None:
     report = []
     report.append("="*80)
     report.append("ANT TRAJECTORY ANALYSIS REPORT")
@@ -582,11 +742,23 @@ def write_report(outdir: Path, csv_path: Path, unit: str, cm_per_pixel: Optional
         report.append(f"Mean turning angle: {np.degrees(np.mean(phi)):.2f} degrees")
         report.append(f"Median turning angle: {np.degrees(np.median(phi)):.2f} degrees")
     report.append(f"MSD exponent beta: {msd['beta']:.4f}")
+    if uncertainty is not None:
+        b = uncertainty.get("msd_beta", {})
+        report.append(f"MSD beta SE: {b.get('se', np.nan):.4f}")
+        report.append(f"MSD beta 95% CI: [{b.get('ci_low', np.nan):.4f}, {b.get('ci_high', np.nan):.4f}]")
     report.append(f"Straightness tracks analysed: {len(straight):,}")
     if len(straight):
         report.append(f"Mean straightness: {np.mean(straight):.4f}")
         report.append(f"Median straightness: {np.median(straight):.4f}")
+        if uncertainty is not None:
+            st = uncertainty.get("mean_straightness", {})
+            report.append(f"Mean straightness SE: {st.get('se', np.nan):.4f}")
+            report.append(f"Mean straightness 95% CI: [{st.get('ci_low', np.nan):.4f}, {st.get('ci_high', np.nan):.4f}]")
     report.append(f"Fractal dimension D: {fractal['D']:.4f}")
+    if uncertainty is not None:
+        fd = uncertainty.get("fractal_D", {})
+        report.append(f"Fractal dimension SE: {fd.get('se', np.nan):.4f}")
+        report.append(f"Fractal dimension 95% CI: [{fd.get('ci_low', np.nan):.4f}, {fd.get('ci_high', np.nan):.4f}]")
     report.append("")
 
     report.append("INTERPRETATION")
@@ -627,8 +799,41 @@ def write_report(outdir: Path, csv_path: Path, unit: str, cm_per_pixel: Optional
         "msd_beta": msd["beta"],
         "mean_straightness": float(np.mean(straight)) if len(straight) else None,
         "fractal_dimension": fractal["D"],
+        "uncertainty": uncertainty,
     }
     (outdir / "analysis_results.json").write_text(json.dumps(data, indent=2))
+
+    # Compact one-row table useful for combining multiple datasets in the paper
+    if uncertainty is not None:
+        beta_u = uncertainty.get("msd_beta", {})
+        D_u = uncertainty.get("fractal_D", {})
+        S_u = uncertainty.get("mean_straightness", {})
+    else:
+        beta_u, D_u, S_u = {}, {}, {}
+
+    summary = pd.DataFrame([{
+        "dataset": csv_path.stem,
+        "n_positions": n_points,
+        f"convex_hull_area_{unit}2": hull["area"],
+        "circularity_index": hull["circularity"],
+        f"monte_carlo_area_{unit}2": mc["area"],
+        f"monte_carlo_area_ci95_low_{unit}2": mc["ci95"][0],
+        f"monte_carlo_area_ci95_high_{unit}2": mc["ci95"][1],
+        "anisotropy_ratio": pca["anisotropy"],
+        "msd_beta": msd["beta"],
+        "msd_beta_se": beta_u.get("se", np.nan),
+        "msd_beta_ci95_low": beta_u.get("ci_low", np.nan),
+        "msd_beta_ci95_high": beta_u.get("ci_high", np.nan),
+        "mean_straightness": float(np.mean(straight)) if len(straight) else np.nan,
+        "mean_straightness_se": S_u.get("se", np.nan),
+        "mean_straightness_ci95_low": S_u.get("ci_low", np.nan),
+        "mean_straightness_ci95_high": S_u.get("ci_high", np.nan),
+        "fractal_dimension_D": fractal["D"],
+        "fractal_dimension_se": D_u.get("se", np.nan),
+        "fractal_dimension_ci95_low": D_u.get("ci_low", np.nan),
+        "fractal_dimension_ci95_high": D_u.get("ci_high", np.nan),
+    }])
+    summary.to_csv(outdir / "summary_for_paper.csv", index=False)
 
 
 # -----------------------------------------------------------------------------
@@ -644,6 +849,7 @@ def main() -> None:
     parser.add_argument("--grid-cell", type=float, default=None, help="Grid cell size in analysis units. Default: 2%% of max spatial extent")
     parser.add_argument("--max-msd-lag", type=int, default=100, help="Maximum lag in frames for MSD")
     parser.add_argument("--density-bins", type=int, default=200, help="Bins for density heatmap")
+    parser.add_argument("--bootstrap", type=int, default=1000, help="Bootstrap samples for confidence intervals")
     args = parser.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
@@ -686,6 +892,9 @@ def main() -> None:
     straight = straightness_indices(df, id_col, frame_col)
     fractal = fractal_box_counting(points)
 
+    # Uncertainty estimates for manuscript tables
+    uncertainty = estimate_descriptor_uncertainties(msd, fractal, straight, n_boot=args.bootstrap)
+
     # Plots
     print("Generating figures...")
     plot_spatial_summary(points, hull, grid, mc, pca, args.output, unit)
@@ -694,7 +903,7 @@ def main() -> None:
     plot_density(points, args.output, unit, bins=args.density_bins)
 
     # Report
-    write_report(args.output, args.csv, unit, cm_per_pixel, len(points), hull, grid, mc, pca, directional, phi, msd, straight, fractal)
+    write_report(args.output, args.csv, unit, cm_per_pixel, len(points), hull, grid, mc, pca, directional, phi, msd, straight, fractal, uncertainty)
     print(f"\nAll results saved to: {args.output}")
 
 

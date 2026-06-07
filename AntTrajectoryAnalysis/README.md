@@ -57,3 +57,12 @@ Quantitative Analysis of Biological Trajectories Using Computer Vision and Stati
 
 This module is one component of the broader BioTrajectoryAnalysis framework for extracting and analysing biological trajectories from video recordings.
 
+
+## Disclaimer
+
+This software is provided for educational and research purposes.
+Although every effort has been made to verify the correctness of the
+algorithms, users are responsible for validating the results obtained
+for their specific applications. Biological tracking data may be
+affected by image quality, occlusions, segmentation errors, and other
+experimental factors.
