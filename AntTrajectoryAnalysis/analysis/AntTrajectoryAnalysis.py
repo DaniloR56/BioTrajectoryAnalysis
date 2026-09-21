@@ -1,74 +1,28 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
 """
-====================================================================
-AntTrajectoryAnalysis Version 1.1
-====================================================================
+AntTrajectoryAnalysis_Biophysics.py
 
-Author:
-    Danilo Roccatano
-    School of Engineering and Physical Sciences
-    University of Lincoln, United Kingdom
+Trajectory analysis script for ant foraging videos.
 
-Description:
-    Open-source Python software for the extraction and quantitative
-    analysis of biological trajectories obtained from video recordings.
+Main focus:
+  1. Spatial exploration and Monte Carlo area estimation
+  2. Directional statistics and anisotropy analysis
+  3. PCA and PCA-whitened coordinates
+  4. Stochastic trajectory descriptors: turning angles, MSD, straightness
+  5. Fractal/box-counting analysis of spatial exploration
 
-    The program computes a range of statistical and geometrical
-    descriptors including:
-
-      • Spatial exploration and Monte Carlo area estimation
-      • Occupancy maps
-      • Directional statistics and anisotropy analysis
-      • Principal Component Analysis (PCA)
-      • Mean Squared Displacement (MSD)
-      • Straightness index
-      • Fractal (box-counting) dimension
-
-    The software was developed as part of the BioTrajectoryAnalysis
-    project and was used to generate the results reported in:
-
-      Roccatano, D.
-      "Computer Vision and Statistical Physics for Quantitative
-      Analysis of Biological Trajectories:
-      An Ant-Tracking Case Study"
-
-Version:
-    1.1
-
-Release date:
-    June 2026
-
-Repository:
-    https://github.com/<your-repository>
-
-License:
-    MIT License
-
-Requirements:
-    Python 3.9+
-    NumPy
-    Pandas
-    Matplotlib
-    SciPy
+The script intentionally does not make pi estimation central.  It is designed
+for the revised paper framing: biological trajectories as experimentally
+accessible stochastic samplers and anisotropic motion patterns.
 
 Example:
-    python AntTrajectoryAnalysis_V1.1.py \
-        ground_bg_results/ant_positions.csv \
-        --cm-per-pixel 0.02899367 \
-        --output ant_biophysics_analysis
+  python AntTrajectoryAnalysis_Biophysics.py ground_bg_results/ant_positions.csv \
+      --cm-per-pixel 0.02899367 --output ant_biophysics_analysis
 
-Notes:
-    If the CSV file already contains x_cm and y_cm columns,
-    they are used automatically. Otherwise x/y pixel coordinates
-    are converted using the supplied calibration factor.
-
-====================================================================
+If the CSV already contains x_cm and y_cm columns, they are used automatically.
+Otherwise x/y pixel columns are converted if --cm-per-pixel is supplied.
 """
-__version__ = "1.1"
-__author__ = "Danilo Roccatano"
-__license__ = "MIT"
 
 from __future__ import annotations
 
@@ -86,8 +40,10 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.path import Path as MplPath
 from scipy.spatial import ConvexHull
 from scipy.stats import circmean, rayleigh
+from scipy.spatial.distance import squareform
+from scipy.cluster.hierarchy import linkage, fcluster
 
-SCRIPT_VERSION = "biophysics_reframed_stats_2026_06_06"
+SCRIPT_VERSION = "1.2.0"
 
 
 # -----------------------------------------------------------------------------
@@ -443,6 +399,468 @@ def fractal_box_counting(points: np.ndarray, n_scales: int = 12) -> Dict:
         D, _ = np.polyfit(x, y, 1)
     return {"eps": eps_values, "N": counts, "D": float(D)}
 
+
+# -----------------------------------------------------------------------------
+# Spatial information geometry
+# -----------------------------------------------------------------------------
+
+def load_roi_from_config(config_path: Optional[Path]) -> Tuple[Optional[np.ndarray], Optional[Path]]:
+    """Load polygon ROI from the tracking config.json, if available."""
+    if config_path is None:
+        return None, None
+    config_path = Path(config_path)
+    if not config_path.exists():
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+    config = json.loads(config_path.read_text())
+    roi = config.get("roi")
+    if not roi:
+        return None, config_path
+    roi = np.asarray(roi, dtype=float)
+    if roi.ndim != 2 or roi.shape[1] != 2 or len(roi) < 3:
+        raise ValueError("ROI in config.json must be a polygon with at least 3 [x,y] points.")
+    return roi, config_path
+
+
+def infer_frame_size(df: pd.DataFrame, roi: Optional[np.ndarray], frame_width: Optional[int],
+                     frame_height: Optional[int]) -> Tuple[int, int, str]:
+    """Resolve a camera-coordinate extent that contains both tracked data and ROI."""
+    cols = {c.lower(): c for c in df.columns}
+    if "x" not in cols or "y" not in cols:
+        raise ValueError("Information-geometry analysis requires raw pixel columns x and y.")
+    x = df[cols["x"]].to_numpy(dtype=float)
+    y = df[cols["y"]].to_numpy(dtype=float)
+    required_w = int(math.ceil(np.nanmax(x) + 1))
+    required_h = int(math.ceil(np.nanmax(y) + 1))
+    if roi is not None:
+        required_w = max(required_w, int(math.ceil(np.nanmax(roi[:, 0]) + 1)))
+        required_h = max(required_h, int(math.ceil(np.nanmax(roi[:, 1]) + 1)))
+
+    notes = []
+    if frame_width is None:
+        frame_width = required_w; notes.append("width inferred")
+    elif frame_width < required_w:
+        notes.append(f"width enlarged {frame_width}->{required_w} to contain data/ROI")
+        frame_width = required_w
+    else:
+        notes.append("explicit width accepted")
+
+    if frame_height is None:
+        frame_height = required_h; notes.append("height inferred")
+    elif frame_height < required_h:
+        notes.append(f"height enlarged {frame_height}->{required_h} to contain data/ROI")
+        frame_height = required_h
+    else:
+        notes.append("explicit height accepted")
+
+    return int(frame_width), int(frame_height), "; ".join(notes)
+
+
+def fisher_rao_distance(p: np.ndarray, q: np.ndarray) -> float:
+    """Fisher--Rao distance for discrete probability vectors: 2 arccos(sum sqrt(p q))."""
+    p = np.asarray(p, dtype=float)
+    q = np.asarray(q, dtype=float)
+    if p.shape != q.shape or p.ndim != 1:
+        raise ValueError("p and q must be 1D probability vectors with the same shape")
+    if np.any(p < 0) or np.any(q < 0):
+        raise ValueError("Probability vectors cannot contain negative values")
+    sp, sq = p.sum(), q.sum()
+    if sp <= 0 or sq <= 0:
+        return np.nan
+    p, q = p / sp, q / sq
+    bc = float(np.sum(np.sqrt(p * q)))
+    return float(2.0 * np.arccos(np.clip(bc, 0.0, 1.0)))
+
+
+def bootstrap_fisher_rao_histograms(a: np.ndarray, b: np.ndarray, edges: np.ndarray,
+                                    n_boot: int = 200,
+                                    rng: Optional[np.random.Generator] = None) -> Dict:
+    """Bootstrap uncertainty of Fisher--Rao distance between two angle samples."""
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    if len(a) < 2 or len(b) < 2 or n_boot < 1:
+        return {"observed": np.nan, "se": np.nan, "ci_low": np.nan, "ci_high": np.nan}
+    if rng is None:
+        rng = np.random.default_rng(12345)
+    ha, _ = np.histogram(a, bins=edges)
+    hb, _ = np.histogram(b, bins=edges)
+    observed = fisher_rao_distance(ha.astype(float), hb.astype(float))
+    vals = np.empty(n_boot)
+    for k in range(n_boot):
+        aa = rng.choice(a, len(a), replace=True)
+        bb = rng.choice(b, len(b), replace=True)
+        h1, _ = np.histogram(aa, bins=edges)
+        h2, _ = np.histogram(bb, bins=edges)
+        vals[k] = fisher_rao_distance(h1.astype(float), h2.astype(float))
+    return {"observed": float(observed), "se": float(np.std(vals, ddof=1)),
+            "ci_low": float(np.percentile(vals, 2.5)),
+            "ci_high": float(np.percentile(vals, 97.5))}
+
+
+def local_turning_angle_grid(df: pd.DataFrame, id_col: Optional[str], frame_col: Optional[str],
+                             frame_width: int, frame_height: int, nx: int = 20, ny: int = 12,
+                             angle_bins: int = 18, min_samples: int = 30,
+                             roi: Optional[np.ndarray] = None, pseudocount: float = 0.0,
+                             bootstrap_samples: int = 0, random_seed: int = 12345) -> Dict:
+    """
+    Build local turning-angle distributions on a regular grid covering the full frame.
+
+    Turning angles are assigned to the middle position of each three-point sequence.
+    The analysis uses the raw image x/y coordinates, so it aligns directly with the
+    tracking ROI.  Cells outside the ROI and cells with insufficient observations are
+    represented by NaN in numerical maps, never by a physical zero.
+    """
+    if nx < 1 or ny < 1 or angle_bins < 2 or min_samples < 1:
+        raise ValueError("nx, ny, angle_bins and min_samples must be positive (angle_bins >= 2).")
+    cols = {c.lower(): c for c in df.columns}
+    if "x" not in cols or "y" not in cols:
+        raise ValueError("Local information geometry requires raw x and y pixel columns.")
+    xcol, ycol = cols["x"], cols["y"]
+
+    samples: List[List[List[float]]] = [[[] for _ in range(nx)] for _ in range(ny)]
+    group_iter = df.groupby(id_col) if id_col is not None else [(None, df)]
+    for _, g in group_iter:
+        if frame_col is not None:
+            g = g.sort_values(frame_col)
+        pts = g[[xcol, ycol]].to_numpy(dtype=float)
+        if len(pts) < 3:
+            continue
+        v1 = pts[1:-1] - pts[:-2]
+        v2 = pts[2:] - pts[1:-1]
+        n1 = np.linalg.norm(v1, axis=1)
+        n2 = np.linalg.norm(v2, axis=1)
+        valid = np.isfinite(pts[1:-1]).all(axis=1) & (n1 > 0) & (n2 > 0)
+        mids = pts[1:-1][valid]
+        dot = np.sum(v1[valid] * v2[valid], axis=1)
+        phi = np.arccos(np.clip(dot / (n1[valid] * n2[valid]), -1.0, 1.0))
+        for (x, y), a in zip(mids, phi):
+            if not (0 <= x < frame_width and 0 <= y < frame_height):
+                continue
+            ix = min(nx - 1, int(x / frame_width * nx))
+            iy = min(ny - 1, int(y / frame_height * ny))
+            samples[iy][ix].append(float(a))
+
+    counts = np.zeros((ny, nx), dtype=int)
+    probs = np.full((ny, nx, angle_bins), np.nan, dtype=float)
+    edges = np.linspace(0.0, np.pi, angle_bins + 1)
+
+    # ROI validity is based on cell centres. Cells containing actual samples are
+    # retained as ROI-valid too, which handles polygon boundaries conservatively.
+    roi_valid = np.ones((ny, nx), dtype=bool)
+    if roi is not None:
+        path = MplPath(roi)
+        xc = (np.arange(nx) + 0.5) * frame_width / nx
+        yc = (np.arange(ny) + 0.5) * frame_height / ny
+        centres = np.array([(x, y) for y in yc for x in xc])
+        roi_valid = path.contains_points(centres).reshape(ny, nx)
+
+    for iy in range(ny):
+        for ix in range(nx):
+            vals = np.asarray(samples[iy][ix], dtype=float)
+            counts[iy, ix] = len(vals)
+            if len(vals) > 0:
+                roi_valid[iy, ix] = True
+            if roi_valid[iy, ix] and len(vals) >= min_samples:
+                h, _ = np.histogram(vals, bins=edges)
+                h = h.astype(float) + float(pseudocount)
+                if h.sum() > 0:
+                    probs[iy, ix] = h / h.sum()
+
+    valid_cells = np.isfinite(probs).all(axis=2)
+    cell_indices = np.argwhere(valid_cells)  # [iy, ix]
+    n_valid = len(cell_indices)
+    D = np.full((n_valid, n_valid), np.nan, dtype=float)
+    for a in range(n_valid):
+        D[a, a] = 0.0
+        ia, ja = cell_indices[a]
+        for b in range(a + 1, n_valid):
+            ib, jb = cell_indices[b]
+            d = fisher_rao_distance(probs[ia, ja], probs[ib, jb])
+            D[a, b] = D[b, a] = d
+
+    # Mean Fisher--Rao distance to four spatial neighbours.
+    gradient = np.full((ny, nx), np.nan, dtype=float)
+    gradient_ci_low = np.full((ny, nx), np.nan, dtype=float)
+    gradient_ci_high = np.full((ny, nx), np.nan, dtype=float)
+    rng = np.random.default_rng(random_seed)
+    for iy, ix in cell_indices:
+        ds, lows, highs = [], [], []
+        for dy, dx in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            jy, jx = iy + dy, ix + dx
+            if 0 <= jy < ny and 0 <= jx < nx and valid_cells[jy, jx]:
+                ds.append(fisher_rao_distance(probs[iy, ix], probs[jy, jx]))
+                if bootstrap_samples > 0:
+                    boot = bootstrap_fisher_rao_histograms(
+                        np.asarray(samples[iy][ix]), np.asarray(samples[jy][jx]),
+                        edges, bootstrap_samples, rng)
+                    lows.append(boot["ci_low"]); highs.append(boot["ci_high"])
+        if ds:
+            gradient[iy, ix] = float(np.mean(ds))
+            if lows:
+                gradient_ci_low[iy, ix] = float(np.mean(lows))
+                gradient_ci_high[iy, ix] = float(np.mean(highs))
+
+    return {
+        "counts": counts, "probs": probs, "angle_edges": edges,
+        "roi_valid": roi_valid, "valid_cells": valid_cells,
+        "cell_indices": cell_indices, "distance_matrix": D,
+        "gradient": gradient, "gradient_ci_low": gradient_ci_low, "gradient_ci_high": gradient_ci_high,
+        "frame_width": frame_width, "frame_height": frame_height,
+        "nx": nx, "ny": ny, "min_samples": min_samples, "angle_bins": angle_bins,
+    }
+
+
+def cluster_information_geometry(info: Dict, n_clusters: int = 4) -> np.ndarray:
+    """Hierarchical clustering of valid cells using the Fisher--Rao distance matrix."""
+    labels_map = np.full((info["ny"], info["nx"]), np.nan, dtype=float)
+    idx = info["cell_indices"]
+    D = info["distance_matrix"]
+    n = len(idx)
+    if n == 0:
+        return labels_map
+    if n == 1:
+        labels = np.array([1])
+    else:
+        k = max(1, min(int(n_clusters), n))
+        Z = linkage(squareform(D, checks=False), method="average")
+        labels = fcluster(Z, t=k, criterion="maxclust")
+    for (iy, ix), lab in zip(idx, labels):
+        labels_map[iy, ix] = int(lab)
+    return labels_map
+
+
+def save_information_geometry_outputs(info: Dict, labels: np.ndarray, outdir: Path,
+                                      roi: Optional[np.ndarray] = None) -> None:
+    """Save numerical tables and spatial maps for the local information-geometry analysis."""
+    extent = [0, info["frame_width"], info["frame_height"], 0]  # image coordinates
+
+    # Sampling map
+    fig, ax = plt.subplots(figsize=(10, 6))
+    counts_plot = info["counts"].astype(float)
+    counts_plot[~info["roi_valid"]] = np.nan
+    im = ax.imshow(counts_plot, extent=extent, interpolation="nearest", aspect="equal")
+    if roi is not None:
+        rp = np.vstack([roi, roi[0]])
+        ax.plot(rp[:, 0], rp[:, 1], linewidth=1.5)
+    ax.set_title("Local Movement Sampling")
+    ax.set_xlabel("X (pixels)"); ax.set_ylabel("Y (pixels)")
+    cbar = fig.colorbar(im, ax=ax); cbar.set_label("Turning-angle observations per cell")
+    fig.tight_layout(); savefig(fig, outdir, "info_geometry_sampling_map")
+
+    # Local information gradient
+    fig, ax = plt.subplots(figsize=(10, 6))
+    im = ax.imshow(info["gradient"], extent=extent, interpolation="nearest", aspect="equal")
+    if roi is not None:
+        rp = np.vstack([roi, roi[0]])
+        ax.plot(rp[:, 0], rp[:, 1], linewidth=1.5)
+    ax.set_title("Local Fisher--Rao Heterogeneity")
+    ax.set_xlabel("X (pixels)"); ax.set_ylabel("Y (pixels)")
+    cbar = fig.colorbar(im, ax=ax); cbar.set_label("Mean Fisher--Rao distance to valid neighbours")
+    fig.tight_layout(); savefig(fig, outdir, "info_geometry_local_gradient")
+
+    # Cluster/domain map
+    fig, ax = plt.subplots(figsize=(10, 6))
+    im = ax.imshow(labels, extent=extent, interpolation="nearest", aspect="equal")
+    if roi is not None:
+        rp = np.vstack([roi, roi[0]])
+        ax.plot(rp[:, 0], rp[:, 1], linewidth=1.5)
+    ax.set_title("Information-Geometric Distributional Clusters")
+    ax.set_xlabel("X (pixels)"); ax.set_ylabel("Y (pixels)")
+    cbar = fig.colorbar(im, ax=ax); cbar.set_label("Cluster label (categorical)")
+    fig.tight_layout(); savefig(fig, outdir, "info_geometry_distributional_clusters")
+
+    # Full Fisher--Rao matrix
+    if len(info["cell_indices"]):
+        fig, ax = plt.subplots(figsize=(7, 6))
+        im = ax.imshow(info["distance_matrix"], origin="lower", interpolation="nearest", aspect="auto")
+        ax.set_title("Fisher--Rao Distance Matrix Between Valid Spatial Cells")
+        ax.set_xlabel("Valid-cell index"); ax.set_ylabel("Valid-cell index")
+        cbar = fig.colorbar(im, ax=ax); cbar.set_label("Fisher--Rao distance")
+        fig.tight_layout(); savefig(fig, outdir, "info_geometry_distance_matrix")
+
+    # Machine-readable outputs
+    rows = []
+    for k, (iy, ix) in enumerate(info["cell_indices"]):
+        row = {"cell_index": k, "grid_x": int(ix), "grid_y": int(iy),
+               "n_turning_angles": int(info["counts"][iy, ix]),
+               "cluster": int(labels[iy, ix]) if np.isfinite(labels[iy, ix]) else None,
+               "local_gradient": float(info["gradient"][iy, ix]) if np.isfinite(info["gradient"][iy, ix]) else np.nan,
+               "local_gradient_ci_low": float(info["gradient_ci_low"][iy, ix]) if np.isfinite(info["gradient_ci_low"][iy, ix]) else np.nan,
+               "local_gradient_ci_high": float(info["gradient_ci_high"][iy, ix]) if np.isfinite(info["gradient_ci_high"][iy, ix]) else np.nan}
+        for b, prob in enumerate(info["probs"][iy, ix]):
+            row[f"p_angle_bin_{b:02d}"] = float(prob)
+        rows.append(row)
+    pd.DataFrame(rows).to_csv(outdir / "info_geometry_cells.csv", index=False)
+    if len(info["cell_indices"]):
+        names = [f"cell_{k}" for k in range(len(info["cell_indices"]))]
+        pd.DataFrame(info["distance_matrix"], index=names, columns=names).to_csv(outdir / "fisher_rao_distance_matrix.csv")
+
+
+# -----------------------------------------------------------------------------
+# Temporal information geometry
+# -----------------------------------------------------------------------------
+
+def temporal_turning_angle_information_geometry(df: pd.DataFrame, id_col: Optional[str],
+                                                frame_col: Optional[str], window_frames: int = 1800,
+                                                step_frames: Optional[int] = None, angle_bins: int = 18,
+                                                min_samples: int = 100, pseudocount: float = 0.0,
+                                                fps: Optional[float] = None, bootstrap_samples: int = 0,
+                                                random_seed: int = 12345) -> Dict:
+    """Estimate turning-angle distributions in sliding time windows.
+
+    Each turning angle is associated with the middle frame of a three-point sequence.
+    Fisher--Rao distances are then calculated between all sufficiently sampled windows.
+    Consecutive-window distance divided by the separation of the window centres provides
+    an information-geometric speed.  Windows with insufficient observations remain NaN.
+    """
+    if frame_col is None:
+        raise ValueError("Temporal information geometry requires a frame column.")
+    if window_frames < 2 or angle_bins < 2 or min_samples < 1:
+        raise ValueError("window_frames >= 2, angle_bins >= 2 and min_samples >= 1 are required.")
+    if step_frames is None:
+        step_frames = window_frames
+    if step_frames < 1:
+        raise ValueError("step_frames must be >= 1.")
+
+    samples_frame, samples_angle = [], []
+    group_iter = df.groupby(id_col) if id_col is not None else [(None, df)]
+    for _, g in group_iter:
+        g = g.sort_values(frame_col)
+        pts = g[["x_analysis", "y_analysis"]].to_numpy(dtype=float)
+        frames = g[frame_col].to_numpy(dtype=float)
+        if len(pts) < 3:
+            continue
+        v1, v2 = pts[1:-1] - pts[:-2], pts[2:] - pts[1:-1]
+        n1, n2 = np.linalg.norm(v1, axis=1), np.linalg.norm(v2, axis=1)
+        valid = (np.isfinite(pts[1:-1]).all(axis=1) & np.isfinite(frames[1:-1]) &
+                 (n1 > 0) & (n2 > 0))
+        if not np.any(valid):
+            continue
+        dot = np.sum(v1[valid] * v2[valid], axis=1)
+        phi = np.arccos(np.clip(dot / (n1[valid] * n2[valid]), -1.0, 1.0))
+        samples_frame.extend(frames[1:-1][valid].tolist())
+        samples_angle.extend(phi.tolist())
+
+    sf = np.asarray(samples_frame, dtype=float)
+    sa = np.asarray(samples_angle, dtype=float)
+    if len(sf) == 0:
+        raise ValueError("No valid turning-angle observations for temporal information geometry.")
+
+    first = int(math.floor(np.nanmin(sf)))
+    last = int(math.ceil(np.nanmax(sf)))
+    starts = np.arange(first, last + 1, int(step_frames), dtype=int)
+    edges = np.linspace(0.0, np.pi, angle_bins + 1)
+    probs, counts, centres, raw_window_samples = [], [], [], []
+    for start in starts:
+        stop = start + int(window_frames)
+        vals = sa[(sf >= start) & (sf < stop)]
+        counts.append(len(vals))
+        centres.append(start + 0.5 * window_frames)
+        raw_window_samples.append(np.asarray(vals, dtype=float))
+        if len(vals) >= min_samples:
+            h, _ = np.histogram(vals, bins=edges)
+            h = h.astype(float) + float(pseudocount)
+            probs.append(h / h.sum() if h.sum() > 0 else np.full(angle_bins, np.nan))
+        else:
+            probs.append(np.full(angle_bins, np.nan))
+    probs = np.asarray(probs, dtype=float)
+    counts = np.asarray(counts, dtype=int)
+    centres = np.asarray(centres, dtype=float)
+    valid = np.isfinite(probs).all(axis=1)
+    valid_idx = np.flatnonzero(valid)
+
+    D = np.full((len(valid_idx), len(valid_idx)), np.nan, dtype=float)
+    for a, ia in enumerate(valid_idx):
+        D[a, a] = 0.0
+        for b in range(a + 1, len(valid_idx)):
+            ib = valid_idx[b]
+            D[a, b] = D[b, a] = fisher_rao_distance(probs[ia], probs[ib])
+
+    consecutive_distance = np.full(len(starts), np.nan, dtype=float)
+    consecutive_ci_low = np.full(len(starts), np.nan, dtype=float)
+    consecutive_ci_high = np.full(len(starts), np.nan, dtype=float)
+    ig_speed = np.full(len(starts), np.nan, dtype=float)
+    rng = np.random.default_rng(random_seed)
+    for i in range(1, len(starts)):
+        if valid[i - 1] and valid[i]:
+            d = fisher_rao_distance(probs[i - 1], probs[i])
+            consecutive_distance[i] = d
+            if bootstrap_samples > 0:
+                boot = bootstrap_fisher_rao_histograms(
+                    raw_window_samples[i - 1], raw_window_samples[i], edges,
+                    bootstrap_samples, rng)
+                consecutive_ci_low[i] = boot["ci_low"]
+                consecutive_ci_high[i] = boot["ci_high"]
+            dt_frames = centres[i] - centres[i - 1]
+            dt = dt_frames / fps if fps and fps > 0 else dt_frames
+            if dt > 0:
+                ig_speed[i] = d / dt
+
+    return {
+        "starts": starts, "centres": centres, "counts": counts, "probs": probs,
+        "valid": valid, "valid_indices": valid_idx, "distance_matrix": D,
+        "consecutive_distance": consecutive_distance, "consecutive_ci_low": consecutive_ci_low,
+        "consecutive_ci_high": consecutive_ci_high, "ig_speed": ig_speed,
+        "angle_edges": edges, "window_frames": int(window_frames),
+        "step_frames": int(step_frames), "angle_bins": int(angle_bins),
+        "min_samples": int(min_samples), "fps": fps,
+    }
+
+
+def save_temporal_information_geometry_outputs(info: Dict, outdir: Path) -> None:
+    """Save plots and CSV files for temporal information geometry."""
+    fps = info.get("fps")
+    x = info["centres"] / fps if fps and fps > 0 else info["centres"]
+    xlabel = "Time (s)" if fps and fps > 0 else "Frame"
+
+    fig, ax = plt.subplots(figsize=(10, 4.8))
+    ax.plot(x, info["counts"], marker="o", markersize=3)
+    ax.axhline(info["min_samples"], linestyle="--", linewidth=1)
+    ax.set_xlabel(xlabel); ax.set_ylabel("Turning-angle observations")
+    ax.set_title("Temporal Information-Geometry Sampling")
+    fig.tight_layout(); savefig(fig, outdir, "temporal_info_sampling")
+
+    fig, ax = plt.subplots(figsize=(10, 4.8))
+    ax.plot(x, info["consecutive_distance"], marker="o", markersize=3)
+    if np.isfinite(info["consecutive_ci_low"]).any():
+        ax.fill_between(x, info["consecutive_ci_low"], info["consecutive_ci_high"], alpha=0.2)
+    ax.set_xlabel(xlabel); ax.set_ylabel("Fisher--Rao distance")
+    ax.set_title("Temporal Change in Movement Statistics")
+    fig.tight_layout(); savefig(fig, outdir, "temporal_info_consecutive_distance")
+
+    fig, ax = plt.subplots(figsize=(10, 4.8))
+    ax.plot(x, info["ig_speed"], marker="o", markersize=3)
+    unit = "s$^{-1}$" if fps and fps > 0 else "frame$^{-1}$"
+    ax.set_xlabel(xlabel); ax.set_ylabel(f"Information-geometric speed ({unit})")
+    ax.set_title("Information-Geometric Speed")
+    fig.tight_layout(); savefig(fig, outdir, "temporal_info_speed")
+
+    if len(info["valid_indices"]):
+        fig, ax = plt.subplots(figsize=(7, 6))
+        im = ax.imshow(info["distance_matrix"], origin="lower", interpolation="nearest", aspect="auto")
+        ax.set_xlabel("Valid time-window index"); ax.set_ylabel("Valid time-window index")
+        ax.set_title("Fisher--Rao Distance Matrix Between Time Windows")
+        cbar = fig.colorbar(im, ax=ax); cbar.set_label("Fisher--Rao distance")
+        fig.tight_layout(); savefig(fig, outdir, "temporal_info_distance_matrix")
+
+    rows = []
+    for i, start in enumerate(info["starts"]):
+        row = {"window_index": i, "start_frame": int(start),
+               "centre_frame": float(info["centres"][i]),
+               "n_turning_angles": int(info["counts"][i]),
+               "valid": bool(info["valid"][i]),
+               "fisher_rao_to_previous": float(info["consecutive_distance"][i]) if np.isfinite(info["consecutive_distance"][i]) else np.nan,
+               "fisher_rao_ci_low": float(info["consecutive_ci_low"][i]) if np.isfinite(info["consecutive_ci_low"][i]) else np.nan,
+               "fisher_rao_ci_high": float(info["consecutive_ci_high"][i]) if np.isfinite(info["consecutive_ci_high"][i]) else np.nan,
+               "information_geometric_speed": float(info["ig_speed"][i]) if np.isfinite(info["ig_speed"][i]) else np.nan}
+        if fps and fps > 0:
+            row["centre_time_s"] = float(info["centres"][i] / fps)
+        for b, prob in enumerate(info["probs"][i]):
+            row[f"p_angle_bin_{b:02d}"] = float(prob) if np.isfinite(prob) else np.nan
+        rows.append(row)
+    pd.DataFrame(rows).to_csv(outdir / "temporal_info_windows.csv", index=False)
+    if len(info["valid_indices"]):
+        names = [f"window_{i}" for i in info["valid_indices"]]
+        pd.DataFrame(info["distance_matrix"], index=names, columns=names).to_csv(
+            outdir / "temporal_fisher_rao_distance_matrix.csv")
 
 # -----------------------------------------------------------------------------
 # Plotting
@@ -850,6 +1268,24 @@ def main() -> None:
     parser.add_argument("--max-msd-lag", type=int, default=100, help="Maximum lag in frames for MSD")
     parser.add_argument("--density-bins", type=int, default=200, help="Bins for density heatmap")
     parser.add_argument("--bootstrap", type=int, default=1000, help="Bootstrap samples for confidence intervals")
+    parser.add_argument("--info-geometry", action="store_true", help="Enable local spatial information-geometry analysis")
+    parser.add_argument("--config", type=Path, default=None, help="Tracking config.json containing the polygon ROI")
+    parser.add_argument("--frame-width", type=int, default=None, help="Full camera-frame width in pixels (recommended)")
+    parser.add_argument("--frame-height", type=int, default=None, help="Full camera-frame height in pixels (recommended)")
+    parser.add_argument("--info-grid-x", type=int, default=20, help="Information-geometry grid columns")
+    parser.add_argument("--info-grid-y", type=int, default=12, help="Information-geometry grid rows")
+    parser.add_argument("--info-angle-bins", type=int, default=18, help="Bins over 0..180 degrees for local turning-angle distributions")
+    parser.add_argument("--info-min-samples", type=int, default=30, help="Minimum turning-angle observations required per spatial cell")
+    parser.add_argument("--info-clusters", type=int, default=4, help="Number of hierarchical information-geometric distributional clusters")
+    parser.add_argument("--info-pseudocount", type=float, default=0.0, help="Optional histogram pseudocount per angle bin (default 0)")
+    parser.add_argument("--info-bootstrap", type=int, default=200, help="Bootstrap replicates for spatial neighbour Fisher--Rao CIs; 0 disables")
+    parser.add_argument("--info-seed", type=int, default=12345, help="Random seed for information-geometry bootstrap")
+    parser.add_argument("--temporal-info-geometry", action="store_true", help="Enable time-dependent information-geometry analysis")
+    parser.add_argument("--temporal-window-frames", type=int, default=1800, help="Temporal IG window length in frames")
+    parser.add_argument("--temporal-step-frames", type=int, default=None, help="Temporal IG step in frames; default equals window length")
+    parser.add_argument("--temporal-min-samples", type=int, default=100, help="Minimum turning-angle observations per temporal window")
+    parser.add_argument("--temporal-bootstrap", type=int, default=200, help="Bootstrap replicates for temporal consecutive-distance CIs; 0 disables")
+    parser.add_argument("--fps", type=float, default=None, help="Video frame rate; if supplied temporal axes and IG speed are expressed in seconds")
     args = parser.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
@@ -901,6 +1337,58 @@ def main() -> None:
     plot_monte_carlo_area(points, hull, mc, args.output, unit)
     plot_directional_and_trajectory_stats(directional, phi, msd, fractal, args.output, unit)
     plot_density(points, args.output, unit, bins=args.density_bins)
+
+    # Optional spatial information geometry (raw camera pixel coordinates)
+    if args.info_geometry:
+        print("Running local spatial information-geometry analysis...")
+        roi, config_used = load_roi_from_config(args.config)
+        fw, fh, frame_source = infer_frame_size(df, roi, args.frame_width, args.frame_height)
+        print(f"Information-geometry frame: {fw} x {fh} px ({frame_source})")
+        if roi is None:
+            print("WARNING: no ROI polygon supplied; the full camera frame is treated as accessible.")
+        info = local_turning_angle_grid(
+            df, id_col, frame_col, fw, fh,
+            nx=args.info_grid_x, ny=args.info_grid_y,
+            angle_bins=args.info_angle_bins, min_samples=args.info_min_samples,
+            roi=roi, pseudocount=args.info_pseudocount,
+            bootstrap_samples=args.info_bootstrap, random_seed=args.info_seed)
+        labels = cluster_information_geometry(info, n_clusters=args.info_clusters)
+        save_information_geometry_outputs(info, labels, args.output, roi=roi)
+        info_summary = {
+            "frame_width_px": fw, "frame_height_px": fh, "frame_size_source": frame_source,
+            "config": str(config_used) if config_used else None,
+            "grid_nx": args.info_grid_x, "grid_ny": args.info_grid_y,
+            "angle_bins": args.info_angle_bins, "min_samples": args.info_min_samples,
+            "n_valid_cells": int(info["valid_cells"].sum()),
+            "n_roi_cells": int(info["roi_valid"].sum()),
+            "n_clusters_requested": args.info_clusters,
+            "fisher_rao_convention": "2*arccos(sum(sqrt(p*q)))",
+        }
+        (args.output / "info_geometry_summary.json").write_text(json.dumps(info_summary, indent=2))
+        print(f"Information geometry: {info_summary['n_valid_cells']} sufficiently sampled cells")
+
+    # Optional temporal information geometry
+    if args.temporal_info_geometry:
+        print("Running temporal information-geometry analysis...")
+        temporal_info = temporal_turning_angle_information_geometry(
+            df, id_col, frame_col, window_frames=args.temporal_window_frames,
+            step_frames=args.temporal_step_frames, angle_bins=args.info_angle_bins,
+            min_samples=args.temporal_min_samples, pseudocount=args.info_pseudocount,
+            fps=args.fps, bootstrap_samples=args.temporal_bootstrap,
+            random_seed=args.info_seed)
+        save_temporal_information_geometry_outputs(temporal_info, args.output)
+        temporal_summary = {
+            "window_frames": temporal_info["window_frames"],
+            "step_frames": temporal_info["step_frames"],
+            "fps": args.fps,
+            "angle_bins": args.info_angle_bins,
+            "min_samples": args.temporal_min_samples,
+            "n_windows": int(len(temporal_info["starts"])),
+            "n_valid_windows": int(temporal_info["valid"].sum()),
+            "fisher_rao_convention": "2*arccos(sum(sqrt(p*q)))",
+        }
+        (args.output / "temporal_info_geometry_summary.json").write_text(json.dumps(temporal_summary, indent=2))
+        print(f"Temporal information geometry: {temporal_summary['n_valid_windows']} sufficiently sampled windows")
 
     # Report
     write_report(args.output, args.csv, unit, cm_per_pixel, len(points), hull, grid, mc, pca, directional, phi, msd, straight, fractal, uncertainty)

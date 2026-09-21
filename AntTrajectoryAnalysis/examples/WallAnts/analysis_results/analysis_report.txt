@@ -2,7 +2,7 @@
 ANT TRAJECTORY ANALYSIS REPORT
 Biophysics/statistical-physics framing
 ================================================================================
-Script version: biophysics_reframed_2026_05_27
+Script version: 1.2.0
 Input file: tracking_results/ant_tracks.csv
 Coordinate unit: cm
 cm_per_pixel: 0.027607362
@@ -15,23 +15,23 @@ Convex hull perimeter: 116.7513 cm
 Circularity index: 0.4188 (1 = perfect circle)
 Grid visited area: 436.2326 cm^2
 Grid cell size: 1.0430 cm
-Monte Carlo area: 453.3648 cm^2
-Monte Carlo 95% CI: [452.3860, 454.3437] cm^2
-Fraction of random points inside hull: 0.9428
+Monte Carlo area: 454.2496 cm^2
+Monte Carlo 95% CI: [453.2857, 455.2135] cm^2
+Fraction of random points inside hull: 0.9446
 
 2. PCA ANISOTROPY
 --------------------------------------------------------------------------------
 Eigenvalue 1: 144.227 cm^2
 Eigenvalue 2: 4.46624 cm^2
 Anisotropy ratio lambda1/lambda2: 32.2926
-Principal orientation: 179.25 degrees
+Principal orientation: -179.25 degrees
 Explained variance PC1: 97.00%
 Explained variance PC2: 3.00%
 
 3. DIRECTIONAL STATISTICS
 --------------------------------------------------------------------------------
 Number of displacement vectors: 22,357
-Mean direction: -23.44 degrees
+Mean direction: 23.44 degrees
 Mean resultant length: 0.0134
 Rayleigh p-value: 1.8281e-02
 
@@ -41,10 +41,16 @@ Turning angles computed: 21,184
 Mean turning angle: 66.31 degrees
 Median turning angle: 52.51 degrees
 MSD exponent beta: 1.3492
+MSD beta SE: 0.0150
+MSD beta 95% CI: [1.3199, 1.3785]
 Straightness tracks analysed: 890
 Mean straightness: 0.4245
 Median straightness: 0.3956
-Fractal dimension D: 1.6850
+Mean straightness SE: 0.0081
+Mean straightness 95% CI: [0.4090, 0.4406]
+Fractal dimension D: 1.7005
+Fractal dimension SE: 0.0672
+Fractal dimension 95% CI: [1.5689, 1.8322]
 
 INTERPRETATION
 --------------------------------------------------------------------------------

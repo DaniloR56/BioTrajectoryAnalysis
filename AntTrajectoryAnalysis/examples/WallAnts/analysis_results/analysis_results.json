@@ -1,0 +1,59 @@
+{
+  "script_version": "1.2.0",
+  "input_file": "tracking_results/ant_tracks.csv",
+  "unit": "cm",
+  "cm_per_pixel": 0.027607361963190188,
+  "n_positions": 23708,
+  "convex_hull_area": 454.302641236027,
+  "convex_hull_perimeter": 116.75131022799349,
+  "circularity": 0.41882403795497114,
+  "grid_visited_area": 436.2325808310439,
+  "grid_cell_size": 1.0430061349693254,
+  "monte_carlo_area": 454.24962237795927,
+  "monte_carlo_ci95": [
+    453.2857256209131,
+    455.2135191350054
+  ],
+  "pca_eigenvalues": [
+    144.22653120795286,
+    4.46623718075047
+  ],
+  "anisotropy_ratio": 32.29262696337999,
+  "pca_angle_deg": -179.24532871888928,
+  "pca_explained_variance": [
+    0.969963319473109,
+    0.030036680526890937
+  ],
+  "mean_direction_deg": 23.43900825036805,
+  "mean_resultant_length": 0.013378952215821558,
+  "rayleigh_p": 0.018280666344381507,
+  "mean_turning_angle_deg": 66.3101513288709,
+  "msd_beta": 1.3492206153422028,
+  "mean_straightness": 0.42454532880564005,
+  "fractal_dimension": 1.70052674078599,
+  "uncertainty": {
+    "msd_beta": {
+      "slope": 1.3492206153422028,
+      "intercept": -1.8491842173958795,
+      "se": 0.014955371869498557,
+      "ci_low": 1.3199080864779857,
+      "ci_high": 1.37853314420642,
+      "n": 50
+    },
+    "fractal_D": {
+      "slope": 1.70052674078599,
+      "intercept": 6.030787654068847,
+      "se": 0.06717366937679287,
+      "ci_low": 1.568866348807476,
+      "ci_high": 1.832187132764504,
+      "n": 12
+    },
+    "mean_straightness": {
+      "value": 0.42454532880564005,
+      "se": 0.008123235491411338,
+      "ci_low": 0.4089738211664925,
+      "ci_high": 0.44060053105433394,
+      "n": 890
+    }
+  }
+}

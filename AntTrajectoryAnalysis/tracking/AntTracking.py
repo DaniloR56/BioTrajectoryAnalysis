@@ -190,7 +190,7 @@ import argparse
 from datetime import datetime
 from scipy.optimize import linear_sum_assignment
 
-SCRIPT_VERSION = 'TrackingNew4_Calibrated_TuningPanel_cli_overrides_config_2026-06-03'
+SCRIPT_VERSION = "1.0.0"
 
 # ================== CONFIGURATION ==================
 
