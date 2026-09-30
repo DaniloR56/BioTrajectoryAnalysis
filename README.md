@@ -1,106 +1,170 @@
-# BioTrajectoryAnalysis
+# AntTrajectoryAnalysis / BioTraj v1.2
 
-BioTrajectoryAnalysis is an open-source collection of Python tools for the extraction, visualization, and quantitative analysis of biological trajectories from video recordings.
+A Python toolkit for extracting, analysing, and interpreting biological
+trajectories from video recordings.
 
-The project combines computer vision, automated tracking, and statistical-physics descriptors to study the motion of organisms across a wide range of spatial and temporal scales. The software was initially developed for the analysis of ant foraging trajectories, but the framework is designed to be applicable to many other biological systems.
+BioTraj was developed as part of the BioTrajectoryAnalysis project and
+was originally designed for quantitative analysis of ant foraging
+trajectories. The current release combines computer-vision tracking,
+conventional statistical-physics descriptors, spatial and temporal
+information geometry, scene annotation, and annotation-aware Fisher--Rao
+analysis.
 
-## Current Modules
+## Features
 
-### AntTrajectoryAnalysis
+### Tracking
 
-Tools for tracking and analysing ant motion from video recordings.
+-   Automatic trajectory extraction using OpenCV
+-   Interactive ROI selection
+-   Multi-object tracking
+-   Background subtraction and frame differencing
+-   Export of trajectories in CSV format
+-   Calibration from pixels to physical units
 
-Features include:
+### Conventional trajectory analysis
 
-- Automatic object detection and tracking
-- Region-of-interest (ROI) selection
-- Trajectory reconstruction
-- Convex-hull area estimation
-- Monte Carlo area calculation
-- Occupancy maps
-- Principal Component Analysis (PCA)
-- Mean Squared Displacement (MSD)
-- Straightness analysis
-- Fractal dimension estimation
-- Publication-quality figures
+-   Convex-hull and explored-area estimation
+-   Monte Carlo area calculation
+-   Occupancy maps
+-   Principal Component Analysis (PCA) and anisotropy
+-   Mean Squared Displacement (MSD)
+-   Straightness analysis
+-   Fractal-dimension estimation
+-   Summary tables and figures
 
-This module was developed for the study:
+### Information geometry
 
-> Quantitative Analysis of Biological Trajectories Using Computer Vision and Statistical Physics: An Application to Ant Motion
+-   Turning-angle probability distributions
+-   Spatial Fisher--Rao distance analysis
+-   Local Fisher--Rao gradient maps
+-   Fisher--Rao distance matrices
+-   Distributional clustering
+-   Temporal Fisher--Rao analysis
+-   Bootstrap uncertainty estimation
 
-## Planned Modules
+### Scene annotation and annotation-aware analysis
 
-### ProtistTrajectoryAnalysis
+-   Interactive annotation of regions, surfaces, transitions, biological
+    features, physical constraints, and artifact/exclusion regions
+-   JSON storage of annotations in image coordinates
+-   Mapping of information-geometric cells onto independently defined
+    scene features
+-   Regional and transition-based Fisher--Rao summaries
+-   Distance-from-transition diagnostics and quality-control outputs
 
-Trajectory extraction and statistical analysis of microorganisms such as:
+### Synthetic validation
 
-- Euglena
-- Paramecium
-- Rotifers
-- Other protists
+BioTraj v1.2 includes a synthetic trajectory generator for controlled
+validation of spatial and temporal information-geometric analyses. It
+provides homogeneous, spatial-transition, temporal-transition, combined
+spatiotemporal, and structured-arena scenarios.
 
-Planned analyses include:
+## Main Scripts
 
-- Swimming speed distributions
-- Mean Squared Displacement
-- Directional persistence
-- Rotational diffusion
-- Occupancy maps
-- Population statistics
+-   `tracking/AntTracking.py` -- video-based trajectory extraction and
+    tracking
+-   `analysis/AntTrajectoryAnalysis.py` -- conventional trajectory
+    analysis and spatial/temporal information geometry
+-   `analysis/BioTraj_Scene_Annotator.py` -- interactive annotation of a
+    reference video frame
+-   `analysis/BioTraj_Annotated_FR_Analysis_v1_1.py` -- annotation-aware
+    analysis of spatial Fisher--Rao results
+-   `validation/BioTraj_SyntheticTrajectoryGenerator_v1_2.py` --
+    controlled synthetic trajectory generation for validation
 
-### SlugTrajectoryAnalysis
+See `analysis/README.md` and the user manual in `docs/` for detailed
+usage.
 
-Tools for analysing slug locomotion and exploratory behaviour.
+## Example Workflow
 
-Planned features include:
+    Video recording
+          |
+          v
+    tracking/AntTracking.py
+          |
+          v
+    ant_tracks.csv
+          |
+          v
+    analysis/AntTrajectoryAnalysis.py
+          |
+          +--> conventional trajectory descriptors
+          +--> spatial Fisher--Rao analysis
+          +--> temporal Fisher--Rao analysis
 
-- Trail reconstruction
-- Velocity analysis
-- Turning-angle statistics
-- Space-use characterization
-- Environmental preference mapping
+    Reference frame
+          |
+          v
+    analysis/BioTraj_Scene_Annotator.py
+          |
+          v
+    scene_annotations.json
+          |
+          +-------------------------------+
+                                          |
+    Spatial information-geometry results |
+          |                               |
+          +-------------------------------+
+                                          v
+                     BioTraj_Annotated_FR_Analysis_v1_1.py
+                                          |
+                                          v
+                             annotation-aware results
 
-## Project Goals
+## Example Dataset
 
-The aim of BioTrajectoryAnalysis is to provide a flexible and educational framework for applying concepts from:
+The `examples/WallAnts/` directory provides a compact example for
+testing the BioTraj workflow. It contains a sample video, tracking
+outputs, BioTraj analysis outputs, a reference frame, scene annotations,
+and annotation-aware Fisher--Rao results.
 
-- Computer Vision
-- Statistical Physics
-- Random Walk Theory
-- Movement Ecology
-- Active Matter
-- Data Science
+The included sample video and associated files are provided as a
+reproducible software example and do not constitute the complete
+experimental dataset used for all results reported in the associated
+study. Complete experimental trajectory datasets and original
+full-resolution recordings are available from the author upon reasonable
+request.
 
-to real biological trajectory datasets.
+## Applications
 
-## Requirements
+BioTraj was developed for ant trajectory analysis but can be adapted to
+other systems in which trajectories can be represented in approximately
+two-dimensional coordinates, including protozoa, rotifers, nematodes,
+slugs, and other small organisms.
 
-- Python 3.10+
-- NumPy
-- Pandas
-- SciPy
-- Matplotlib
-- OpenCV
-- scikit-learn
+The interpretation of trajectory statistics and information-geometric
+patterns remains system-dependent. Fisher--Rao heterogeneity identifies
+differences between empirical movement distributions but does not by
+itself establish a behavioural state or biological mechanism.
 
-## License
+## Documentation
 
-MIT License
+The BioTraj v1.2 user manual is provided in the `docs/` directory in PDF
+and LaTeX form. It describes installation, input data, conventional
+trajectory descriptors, spatial and temporal information geometry,
+finite-sampling controls, synthetic validation, scene annotation, and
+annotation-aware analysis.
 
-## Author
+## Associated Publication
 
-Danilo Roccatano
+Roccatano, D.
 
-School of Mathematics and Physics
+*BioTraj: Information-Geometric Mapping of Spatial and Temporal
+Heterogeneity in Biological Trajectories.*
 
-University of Lincoln, United Kingdom
+Manuscript prepared for submission.
 
-## Citation
+## Part of the BioTrajectoryAnalysis Project
 
-If you use this software in published work, please cite the associated publication and provide a link to this repository.
+This module is one component of the broader BioTrajectoryAnalysis
+framework for extracting and analysing biological trajectories from
+video recordings.
 
-## Future Development
+## Disclaimer
 
-The repository will continue to expand with additional modules dedicated to the analysis of microorganisms, invertebrates, and other biological systems exhibiting two-dimensional or quasi-two-dimensional motion.
-
-
+This software is provided for educational and research purposes.
+Although every effort has been made to verify the correctness of the
+algorithms, users are responsible for validating the results obtained
+for their specific applications. Biological tracking data may be
+affected by image quality, occlusions, segmentation errors, projection
+effects, finite sampling, and other experimental factors.

@@ -1,0 +1,193 @@
+{
+  "format": "BioTraj_scene_annotations",
+  "version": "1.0",
+  "image": "FirstFrame.jpg",
+  "image_width": 1920,
+  "image_height": 1080,
+  "coordinate_system": "image pixels; origin top-left; x right; y down",
+  "annotations": [
+    {
+      "id": 1,
+      "label": "concrete_wall",
+      "category": "surface",
+      "exclude_from_tracking_analysis": false,
+      "shape": "polygon",
+      "points": [
+        [
+          1914.158215010142,
+          350.5070993914807
+        ],
+        [
+          1916.105476673428,
+          718.5395537525355
+        ],
+        [
+          3.894523326572008,
+          697.1196754563895
+        ],
+        [
+          1.947261663286004,
+          379.7160243407708
+        ],
+        [
+          1912.210953346856,
+          350.5070993914807
+        ]
+      ]
+    },
+    {
+      "id": 2,
+      "label": "horizontal_wood",
+      "category": "surface",
+      "exclude_from_tracking_analysis": false,
+      "shape": "polygon",
+      "points": [
+        [
+          1.947261663286004,
+          196.6734279918864
+        ],
+        [
+          1918.052738336714,
+          171.35902636916836
+        ],
+        [
+          1918.052738336714,
+          336.8762677484787
+        ],
+        [
+          3.894523326572008,
+          356.34888438133873
+        ],
+        [
+          1.947261663286004,
+          200.56795131845843
+        ]
+      ]
+    },
+    {
+      "id": 3,
+      "label": "vertical_fence",
+      "category": "surface",
+      "exclude_from_tracking_analysis": false,
+      "shape": "polygon",
+      "points": [
+        [
+          1.947261663286004,
+          1.947261663286004
+        ],
+        [
+          1.947261663286004,
+          184.98985801217037
+        ],
+        [
+          1916.105476673428,
+          167.46450304259633
+        ],
+        [
+          1916.105476673428,
+          5.841784989858012
+        ],
+        [
+          1.947261663286004,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": 6,
+      "label": "grass_ground",
+      "category": "surface",
+      "exclude_from_tracking_analysis": false,
+      "shape": "polygon",
+      "points": [
+        [
+          5.841784989858012,
+          702.9614604462474
+        ],
+        [
+          1.947261663286004,
+          761.3793103448276
+        ],
+        [
+          48.6815415821501,
+          771.1156186612576
+        ],
+        [
+          204.46247464503043,
+          932.738336713996
+        ],
+        [
+          253.14401622718051,
+          948.316430020284
+        ],
+        [
+          272.61663286004057,
+          1069.0466531440163
+        ],
+        [
+          1918.052738336714,
+          1072.9411764705883
+        ],
+        [
+          1916.105476673428,
+          720.4868154158215
+        ],
+        [
+          5.841784989858012,
+          702.9614604462474
+        ]
+      ]
+    },
+    {
+      "id": 7,
+      "label": "horizontal_wood_concrete",
+      "category": "surface_transition",
+      "exclude_from_tracking_analysis": false,
+      "shape": "polyline",
+      "points": [
+        [
+          0.0,
+          362.19066937119675
+        ],
+        [
+          1914.158215010142,
+          342.7180527383367
+        ]
+      ]
+    },
+    {
+      "id": 8,
+      "label": "concrete_grass",
+      "category": "surface_transition",
+      "exclude_from_tracking_analysis": false,
+      "shape": "polyline",
+      "points": [
+        [
+          3.894523326572008,
+          701.0141987829614
+        ],
+        [
+          1918.052738336714,
+          718.5395537525355
+        ]
+      ]
+    },
+    {
+      "id": 9,
+      "label": "vertical_fence_horizontal_wood",
+      "category": "surface_transition",
+      "exclude_from_tracking_analysis": false,
+      "shape": "polyline",
+      "points": [
+        [
+          1.947261663286004,
+          194.7261663286004
+        ],
+        [
+          1916.105476673428,
+          171.35902636916836
+        ]
+      ]
+    }
+  ]
+}

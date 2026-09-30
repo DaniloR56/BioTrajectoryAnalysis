@@ -30,18 +30,20 @@ The software was initially developed for ant trajectory analysis, but the workfl
 
 The current release contains two principal components:
 \begin{enumerate}
-\item \texttt{AntTracking\_V1.0.py}: video-based trajectory extraction;
-\item \texttt{AntTrajectoryAnalysis\_V1.2\_info\_geometry\_final.py}: conventional trajectory analysis together with spatial and temporal Fisher--Rao information geometry.
+\item \texttt{AntTracking.py}: video-based trajectory extraction;
+\item \texttt{AntTrajectoryAnalysis.py}: conventional trajectory analysis together with spatial and temporal Fisher--Rao information geometry.
 \end{enumerate}
-Companion utilities are used for scene annotation and annotation-aware interpretation when required.
+Companion utilities provide scene annotation and annotation-aware analysis, while a synthetic trajectory generator provides controlled validation datasets. These utilities are described later in this manual.
 
 \section{Software Architecture}
-The BioTraj workflow is modular: video acquisition and tracking produce trajectory coordinates, while the analysis program operates on exported trajectory files. This separation permits independent use of the analysis module and makes it possible to add new descriptors without changing the tracking program.
+The BioTraj workflow is modular (Figure~\ref{fig:architecture}). Video acquisition and computer-vision tracking are separated from quantitative trajectory analysis through an intermediate CSV trajectory file. The tracking stage is implemented by \texttt{AntTracking.py}, whereas the principal analysis stage is implemented by \texttt{AntTrajectoryAnalysis.py}. This separation allows BioTraj to analyse trajectories produced by other tracking programs, provided that they are converted to the expected CSV representation, and permits new analysis methods to be added without modifying the tracking module.
+
+The analysis engine provides conventional spatial and dynamical descriptors and, when requested, spatial and temporal information-geometric analyses. Scene annotation and annotation-aware Fisher--Rao analysis are implemented as companion modules described later in this manual.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/architecture.png}
-\caption{Overview of the BioTraj workflow. Video-derived trajectories are exported to CSV and analysed using conventional geometric and dynamical descriptors together with spatial and temporal information geometry.}
+\includegraphics[width=0.78\textwidth]{figures/architecture.jpg}
+\caption{\textbf{BioTraj software architecture.} A video recording is processed by the computer-vision tracking module (\texttt{AntTracking.py}) to produce trajectory coordinates in CSV format. The trajectory file is then analysed by the BioTraj analysis engine (\texttt{AntTrajectoryAnalysis.py}). The diagram illustrates representative conventional outputs, including explored-area estimates, occupancy maps, PCA-based anisotropy and mean-squared-displacement analysis. Spatial and temporal Fisher--Rao information geometry and the companion annotation-aware analysis extend this core workflow and are described in later sections.}
 \label{fig:architecture}
 \end{figure}
 
@@ -60,11 +62,11 @@ The tracking program detects moving objects, filters detections, associates dete
 
 \subsection{Basic Usage}
 \begin{lstlisting}
-python3 AntTracking_V1.0.py video.mov
+python3 AntTracking.py video.mov
 \end{lstlisting}
 A typical configured run is:
 \begin{lstlisting}
-python3 AntTracking_V1.0.py video.mov \
+python3 AntTracking.py video.mov \
     --threshold 18 \
     --min-area 6 \
     --max-area 250 \
@@ -86,14 +88,21 @@ Coordinates may be expressed in pixels or calibrated physical units. Turning ang
 \subsection{Basic Usage}
 The current analysis program is run with the trajectory CSV as the positional argument:
 \begin{lstlisting}
-python3 AntTrajectoryAnalysis_V1.2_info_geometry_final.py \
+python3 AntTrajectoryAnalysis.py \
     ant_tracks.csv \
     --output analysis_results
 \end{lstlisting}
 Without information-geometry switches, the program provides the conventional BioTraj trajectory descriptors and associated figures.
 
 \subsection{Conventional Descriptors}
-BioTraj calculates complementary geometric and dynamical descriptors, including convex-hull explored area, Monte Carlo area estimation, occupancy maps, principal-component anisotropy, mean-squared displacement (MSD), straightness, and fractal dimension.
+BioTraj calculates complementary geometric and dynamical descriptors, including convex-hull explored area, Monte Carlo area estimation, occupancy maps, principal-component anisotropy, mean-squared displacement (MSD), straightness, and fractal dimension. Figure~\ref{fig:conventional-workflow} illustrates how these descriptors fit into the experimental workflow, from video recording and object tracking to reconstructed trajectories and quantitative analysis.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{figures/conventional_analysis_workflow.jpg}
+\caption{\textbf{From video recording to conventional BioTraj descriptors.} A biological recording is processed by computer-vision tracking to reconstruct trajectories and their spatial extent. BioTraj then calculates complementary descriptors of spatial exploration and movement dynamics. Representative outputs shown here include occupancy maps, PCA anisotropy, MSD scaling, box-counting fractal dimension, Monte Carlo area estimation and trajectory straightness. The figure illustrates the conventional-analysis branch of BioTraj; the information-geometric analyses described later provide additional spatially and temporally resolved comparisons of movement distributions.}
+\label{fig:conventional-workflow}
+\end{figure}
 
 \subsubsection{Explored Area and Monte Carlo Estimation}
 The explored domain is approximated by the convex hull. A Monte Carlo estimate can be obtained from random points within a bounding rectangle:
@@ -119,7 +128,7 @@ Straightness compares net displacement with total path length. Fractal dimension
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.82\textwidth]{figures/density_heatmap.png}
+\includegraphics[width=0.82\textwidth]{figures/density_heatmap.pdf}
 \caption{Example BioTraj occupancy map. Occupancy describes \emph{where} observations occur and is complementary to the information-geometric analysis, which describes how local movement distributions differ.}
 \label{fig:occupancy}
 \end{figure}
@@ -148,15 +157,23 @@ P=(p_1,\ldots,p_K),\qquad p_k\geq0,\qquad \sum_{k=1}^{K}p_k=1.
 \end{equation}
 
 \subsection{Fisher--Rao Distance}
-The square-root representation
+The square-root embedding
 \begin{equation}
-\psi(P)=(\sqrt{p_1},\ldots,\sqrt{p_K})
+\psi(P)=2\left(\sqrt{p_1},\ldots,\sqrt{p_K}\right)
 \end{equation}
-maps the categorical probability simplex to the positive orthant of the unit sphere. Under the metric convention used by BioTraj, the Fisher--Rao geodesic distance between two categorical distributions is
+maps the categorical probability simplex isometrically, under the Fisher
+metric convention used by BioTraj, to the positive orthant of a sphere of
+radius 2 because $\|\psi(P)\|_2=2$. Equivalently, the unscaled square-root
+vector $(\sqrt{p_1},\ldots,\sqrt{p_K})$ lies on the unit sphere. Under this
+convention, the Fisher--Rao geodesic distance between two categorical
+distributions is
 \begin{equation}
-d_{\mathrm{FR}}(P,Q)=2\arccos\left(\sum_{k=1}^{K}\sqrt{p_kq_k}\right).
+d_{\mathrm{FR}}(P,Q)=
+2\arccos\left(\sum_{k=1}^{K}\sqrt{p_kq_k}\right).
 \end{equation}
-The same fixed histogram partition must be used when distributions are compared.
+Thus $0\leq d_{\mathrm{FR}}\leq\pi$, with zero corresponding to identical
+distributions and $\pi$ to distributions with disjoint support. The same
+fixed histogram partition must be used when distributions are compared.
 
 \subsection{Spatial Information Geometry}
 With \texttt{--info-geometry}, the analysed domain is divided into a rectangular grid. A turning-angle distribution is estimated for each sufficiently sampled cell. Pairwise Fisher--Rao distances quantify statistical separation between cells, while the local Fisher--Rao heterogeneity assigned to a cell summarizes its distances from valid neighbouring cells.
@@ -165,7 +182,7 @@ Large local values indicate that a cell's estimated turning-angle distribution d
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.78\textwidth]{figures/info_geometry_local_heterogeneity.png}
+\includegraphics[width=0.78\textwidth]{figures/info_geometry_local_gradient.png}
 \caption{Example spatial Fisher--Rao map. Colour represents local Fisher--Rao heterogeneity calculated from neighbouring spatial cells. The map identifies spatial changes in movement statistics and should not be interpreted automatically as a behavioural-state map.}
 \label{fig:localfr}
 \end{figure}
@@ -207,14 +224,31 @@ The window length controls temporal resolution. A sharp transition occurring ins
 \end{figure}
 
 \subsection{Bootstrap and Finite-Sampling Controls}
-The spatial and temporal modules can bootstrap empirical turning-angle samples to estimate uncertainty in Fisher--Rao distances. This quantifies empirical sampling variability but does not make temporally correlated observations or neighbouring spatial cells independent biological replicates.
 
-Raw Fisher--Rao values should not be used to rank datasets with very different local sample sizes without additional sampling controls. Equal-count resampling and threshold-convergence analyses are useful diagnostics.
+The spatial and temporal modules can bootstrap empirical turning-angle
+samples to estimate uncertainty in Fisher--Rao distances. This quantifies
+empirical sampling variability but does not make temporally correlated
+observations or neighbouring spatial cells independent biological
+replicates.
+
+Raw Fisher--Rao values should not be compared across datasets with very
+different local sample sizes without additional sampling controls.
+BioTraj therefore supports interpretation using complementary diagnostics.
+Equal-count resampling tests whether differences persist when the same
+number of observations is used in each eligible spatial cell, whereas
+threshold-convergence analysis examines the stability of the result as
+the minimum number of observations required for a cell is increased.
+Figure~\ref{fig:finitesampling} illustrates the equal-count approach.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.82\textwidth]{figures/finite_sampling.png}
-\caption{Illustration of finite-sampling effects on local Fisher--Rao heterogeneity. Sparse cells can show larger and more variable empirical distances; sampling diagnostics are therefore part of the recommended interpretation workflow.}
+\includegraphics[width=0.82\textwidth] {figures/equal_sample_FR_comparison.png}
+\caption{Equal-sample control for local Fisher--Rao heterogeneity.
+Turning-angle observations are resampled to a common sample size before
+calculating local Fisher--Rao quantities, reducing differences caused
+solely by unequal numbers of observations among spatial cells. Repeated
+resampling provides a measure of finite-sampling variability and helps
+distinguish sampling effects from persistent differences among recordings.}
 \label{fig:finitesampling}
 \end{figure}
 
@@ -246,7 +280,7 @@ Option & Default & Meaning\\
 \section{Reproducing the Information-Geometry Settings Used in the BioTraj Study}
 The analyses reported with BioTraj v1.2 used a $20\times12$ spatial grid, 18 turning-angle bins, a minimum of 30 angles per spatial cell, 200 bootstrap replicates, and 15-s non-overlapping temporal windows for 60-fps recordings. Because the program default temporal window is 1800 frames, the 900-frame manuscript setting must be supplied explicitly:
 \begin{lstlisting}
-python3 AntTrajectoryAnalysis_V1.2_info_geometry_final.py \
+python3 AntTrajectoryAnalysis.py \
     ant_tracks.csv \
     --output BioTraj_V1_2_results \
     --info-geometry \
@@ -266,10 +300,95 @@ python3 AntTrajectoryAnalysis_V1.2_info_geometry_final.py \
     --fps 60
 \end{lstlisting}
 
+\subsection{Synthetic Validation Data}
+
+BioTraj v1.2 includes the controlled trajectory generator
+\texttt{BioTraj\_SyntheticTrajectoryGenerator\_v1\_2\_structured\_arena.py}.
+The generator produces synthetic trajectories for which the underlying
+spatial and/or temporal statistical structure is known in advance. These
+datasets provide a controlled test of the information-geometric analysis
+independently of experimental tracking uncertainty.
+
+The generator contains five scenarios:
+\begin{enumerate}
+\item \textbf{Homogeneous stationary}: the same movement law is used
+throughout the arena and throughout the recording;
+\item \textbf{Spatial two-domain}: the movement law changes across a known
+vertical spatial boundary;
+\item \textbf{Temporal two-state}: the movement law changes at a known frame;
+\item \textbf{Spatiotemporal}: spatial domains are combined with a known
+temporal change;
+\item \textbf{Structured arena}: a localization benchmark containing a
+circular nest/entrance zone, a directional corridor, a wall/surface-transition
+boundary, and ordinary observation-frame exits.
+\end{enumerate}
+
+The first four scenarios correspond to the controlled synthetic validation
+cases used in the BioTraj study. The structured-arena case is an additional
+validation example distributed with BioTraj v1.2. Its semantic geometry is
+stored as ground truth but is not supplied to the BioTraj information-geometric
+analysis.
+
+The synthetic movement model updates the direction according to a von Mises
+turning distribution and draws positive step lengths from a truncated normal
+distribution. It is intentionally a controlled validation model rather than a
+realistic mechanistic model of ant behaviour.
+
+To generate all supplied validation scenarios without automatically launching
+the BioTraj analysis, use for example:
+\begin{lstlisting}
+python3 BioTraj_SyntheticTrajectoryGenerator_v1_2.py \
+    --all \
+    --base-dir synthetic_validation \
+    --seed 12345 \
+    --generate-only
+\end{lstlisting}
+
+Each generated scenario contains an \texttt{ant\_tracks.csv} file compatible
+with \texttt{AntTrajectoryAnalysis.py}, together with configuration and
+ground-truth metadata and a trajectory preview. The generated trajectories can
+therefore be passed through the same analysis workflow used for experimental
+data.
+
+For the validation cases reported in the BioTraj study, the synthetic
+trajectories used 20 agents, 12,116 frames, a $1905\times726$ pixel arena,
+60 frames s$^{-1}$, and random seed 12345. The imposed spatial and temporal
+changes are known independently of the information-geometric analysis, allowing
+recovery of these changes to be assessed at the resolution of the selected
+spatial grid and temporal windows.
+
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.95\textwidth]{figures/simulation_validation.png}
-\caption{Simulation-based validation example used during development of the information-geometric module. Stationary, temporal-transition, and spatial-transition cases illustrate how known imposed statistical changes are recovered within the resolution of the selected temporal windows and spatial grid.}
+
+\begin{minipage}{0.48\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]
+    {figures/SI_S5a_spatial_FR_validation.png}
+
+    \textbf{(a) Spatial validation}
+\end{minipage}
+\hfill
+\begin{minipage}{0.48\textwidth}
+    \centering
+    \includegraphics[width=\textwidth]
+    {figures/SI_S5b_temporal_FR_validation.png}
+
+    \textbf{(b) Temporal validation}
+\end{minipage}
+
+\caption{\textbf{Simulation-based validation of the information-geometric
+analysis.}
+(a) Spatial validation using synthetic trajectories with a known change
+in movement statistics across the arena. The spatial Fisher--Rao analysis
+is evaluated against the imposed spatial structure.
+(b) Temporal validation using synthetic trajectories with a known change
+in movement statistics during the recording. The temporal Fisher--Rao
+analysis is evaluated against the imposed transition time.
+Because the spatial and temporal changes are specified independently when
+the trajectories are generated, these tests provide controlled validation
+of the ability of BioTraj to recover distributional heterogeneity at the
+resolution of the selected spatial grid and temporal windows.}
+
 \label{fig:simulation}
 \end{figure}
 
@@ -278,7 +397,7 @@ Depending on enabled options, the v1.2 analysis writes numerical tables, summari
 \begin{itemize}
 \item \texttt{info\_geometry\_cells.csv}: cell-level spatial information-geometry results;
 \item \texttt{info\_geometry\_summary.json}: spatial analysis settings and summary quantities;
-\item spatial sampling, local heterogeneity, distance-matrix, and distributional-cluster figures;
+\item spatial sampling, local Fisher--Rao gradient, distance-matrix, and distributional-cluster figures;
 \item \texttt{temporal\_info\_windows.csv}: window-level temporal information;
 \item \texttt{temporal\_fisher\_rao\_distance\_matrix.csv}: complete temporal distance matrix;
 \item \texttt{temporal\_info\_geometry\_summary.json}: temporal settings and summary information;
@@ -287,13 +406,104 @@ Depending on enabled options, the v1.2 analysis writes numerical tables, summari
 File names can evolve slightly between development builds; the release version and its generated summary files should be retained with published analyses.
 
 \section{Scene Annotation and Annotation-Aware Analysis}
-Scene annotation is handled by companion BioTraj utilities rather than by the main v1.2 trajectory-analysis command described above. Annotations are defined in the original image coordinate system and stored separately from the trajectory data. They can represent polygonal surfaces or biological regions, polylines marking physical transitions, circular features, observation boundaries, and independently identified artifact regions.
+
+The supplied \texttt{examples/WallAnts/} dataset illustrates the complete
+three-stage workflow. Tracking outputs are stored in
+\texttt{tracking\_results/}, conventional and information-geometric analysis
+outputs in \texttt{BioTraj\_V1\_2\_revision2/}, and the annotation-aware
+Fisher--Rao results in \texttt{WALL\_annotated\_FR\_v1\_1/}. The example also
+includes \texttt{FirstFrame.jpg}, the corresponding scene-annotation JSON
+file, and an annotated reference image.
+
+
+
+BioTraj v1.2 includes two companion utilities for relating independently
+defined features of the recorded scene to the spatial Fisher--Rao results:
+\texttt{BioTraj\_Scene\_Annotator.py} and
+\texttt{BioTraj\_Annotated\_FR\_Analysis\_v1\_1.py}. These utilities are
+separate from the main trajectory-analysis program so that physical or
+biological scene information can be defined independently of the
+information-geometric result.
+
+\subsection{Scene Annotation}
+
+The graphical scene annotator can be started with:
+\begin{lstlisting}
+python3 BioTraj_Scene_Annotator.py FirstFrame.jpg
+\end{lstlisting}
+where \texttt{FirstFrame.jpg} is a reference image in the same coordinate
+system as the tracked trajectories.
+
+The annotator stores scene information in JSON format using original-image
+pixel coordinates. It can be used to define polygonal regions, polylines,
+circles, surface regions, surface transitions, biological features, physical
+constraints, observation boundaries, and artifact or exclusion regions.
 
 Three concepts should remain distinct:
 \begin{center}
-\textbf{tracking domain} $\neq$ \textbf{biological/physical regions} $\neq$ \textbf{artifact masks}.
+\textbf{tracking domain} $\neq$
+\textbf{biological/physical regions} $\neq$
+\textbf{artifact masks}.
 \end{center}
-Whenever possible, scene annotations intended for interpretation should be defined independently of the Fisher--Rao result. Annotation-aware comparisons are descriptive unless the experimental design provides genuine independent biological replication.
+
+Whenever possible, scene annotations intended for biological or physical
+interpretation should be defined independently of the Fisher--Rao map. This
+reduces the risk of selecting regions retrospectively because they coincide
+with features already visible in the information-geometric result.
+
+\subsection{Annotation-Aware Fisher--Rao Analysis}
+
+The annotation-aware analysis combines the scene-annotation JSON file with
+\texttt{info\_geometry\_cells.csv} generated by
+\texttt{AntTrajectoryAnalysis.py}. A typical command is:
+\begin{lstlisting}
+python3 BioTraj_Annotated_FR_Analysis_v1_1.py \
+    --annotations FirstFrame_scene_annotations.json \
+    --info-cells BioTraj_results/info_geometry_cells.csv \
+    --tracks ant_tracks.csv \
+    --image FirstFrame.jpg \
+    --grid-x 20 \
+    --grid-y 12 \
+    --output annotated_FR_results
+\end{lstlisting}
+
+The \texttt{--tracks} argument is optional but is recommended when the
+original BioTraj image frame should be inferred consistently. The
+\texttt{--image} argument is optional and supplies a reference image for
+registration and Fisher--Rao overlays. The explicit \texttt{--grid-x} and
+\texttt{--grid-y} values are strongly recommended when
+\texttt{info\_geometry\_cells.csv} contains only the populated/valid cells,
+because they preserve the full spatial grid used by the original analysis.
+
+The program assigns valid information-geometric cells to annotated scene
+features and produces regional and transition-based summaries. It can also
+evaluate local Fisher--Rao heterogeneity as a function of distance from
+annotated transitions and generate graphical overlays and quality-control
+outputs. Regions marked for exclusion in the annotation file can be treated
+as artifact masks in the corresponding quality-controlled summaries.
+
+Annotation-aware comparisons remain descriptive unless the experimental
+design provides genuine independent biological replication. Spatial cells
+within one recording should not automatically be treated as independent
+biological replicates, and a relationship between Fisher--Rao heterogeneity
+and an annotated feature does not by itself establish a biological mechanism.
+
+\subsection{Annotation-Aware Workflow}
+
+The intended sequence is:
+\begin{enumerate}
+\item extract trajectories with \texttt{AntTracking.py}, or provide compatible
+trajectory data from another tracker;
+\item analyse the trajectories with \texttt{AntTrajectoryAnalysis.py} and
+generate \texttt{info\_geometry\_cells.csv};
+\item select a reference image, normally the first video frame;
+\item define scene features independently using
+\texttt{BioTraj\_Scene\_Annotator.py};
+\item combine the annotation JSON file and the spatial information-geometric
+results using \texttt{BioTraj\_Annotated\_FR\_Analysis\_v1\_1.py};
+\item inspect both raw and quality-controlled regional/transition summaries
+before biological interpretation.
+\end{enumerate}
 
 \section{Recommended Analysis Workflow}
 A robust information-geometric workflow is:

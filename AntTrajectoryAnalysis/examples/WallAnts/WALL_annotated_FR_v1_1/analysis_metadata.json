@@ -1,0 +1,33 @@
+{
+  "annotations_file": "FirstFrame_scene_annotations_corrected.json",
+  "info_cells_file": "BioTraj_V1_2_revision2/info_geometry_cells.csv",
+  "tracks_file": "ant_tracks.csv",
+  "image_file": "FirstFrame.jpg",
+  "grid_x": 20,
+  "grid_y": 12,
+  "observed_populated_grid_extent_x": 20,
+  "observed_populated_grid_extent_y": 9,
+  "inferred_ig_frame_width_px": 1919,
+  "inferred_ig_frame_height_px": 1079,
+  "grid_cell_width_px": 95.95,
+  "grid_cell_height_px": 89.91666666666667,
+  "one_cell_analysis_band_px": 95.95,
+  "geometry_source": "trajectory coordinate extrema (BioTraj revision2 convention)",
+  "n_info_geometry_cells": 149,
+  "n_cells_with_defined_local_gradient": 148,
+  "n_qc_excluded": 0,
+  "n_qc_retained": 149,
+  "surface_labels": [
+    "concrete_wall",
+    "horizontal_wood",
+    "vertical_fence",
+    "grass_ground"
+  ],
+  "transition_labels": [
+    "horizontal_wood_concrete",
+    "concrete_grass",
+    "vertical_fence_horizontal_wood"
+  ],
+  "exclusion_labels": [],
+  "note": "Descriptive spatial-cell analysis only. No inferential p-values are computed because information-geometry cells are spatially dependent and are not independent biological replicates."
+}

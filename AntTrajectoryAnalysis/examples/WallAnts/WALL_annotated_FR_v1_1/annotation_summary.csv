@@ -1,0 +1,8 @@
+annotation_id,label,category,shape,exclude_from_tracking_analysis,n_cell_centres_inside,minimum_cell_distance_px
+1,concrete_wall,surface,polygon,False,80.0,
+2,horizontal_wood,surface,polygon,False,40.0,
+3,vertical_fence,surface,polygon,False,26.0,
+6,grass_ground,surface,polygon,False,3.0,
+7,horizontal_wood_concrete,surface_transition,polyline,False,,28.44703907685442
+8,concrete_grass,surface_transition,polyline,False,,27.041650651117596
+9,vertical_fence_horizontal_wood,surface_transition,polyline,False,,30.62510339276223

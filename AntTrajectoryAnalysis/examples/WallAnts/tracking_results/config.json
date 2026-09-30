@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-09-21T19:34:04.875833",
-  "video_file": "SampleVideo.mov",
+  "timestamp": "2026-09-20T15:30:01.179349",
+  "video_file": "IMG_8069r_NoSOund.mov",
   "parameters": {
     "method": "framediff",
     "brightness_threshold": 150,
@@ -16,24 +16,7 @@
     "merge_distance": 25.0,
     "verbose": false
   },
-  "roi": [
-    [
-      12,
-      388
-    ],
-    [
-      1904,
-      388
-    ],
-    [
-      1904,
-      725
-    ],
-    [
-      12,
-      725
-    ]
-  ],
+  "roi": null,
   "calibration": {
     "method": "manual_factor",
     "cm_per_pixel": 0.027607361963190184

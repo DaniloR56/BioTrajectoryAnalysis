@@ -1,0 +1,14 @@
+{
+  "frame_width_px": 1919,
+  "frame_height_px": 1079,
+  "frame_size_source": "width inferred; height inferred",
+  "config": "ANTS_WALL_TEST/tracking_results/config.json",
+  "grid_nx": 20,
+  "grid_ny": 12,
+  "angle_bins": 18,
+  "min_samples": 30,
+  "n_valid_cells": 149,
+  "n_roi_cells": 240,
+  "n_clusters_requested": 4,
+  "fisher_rao_convention": "2*arccos(sum(sqrt(p*q)))"
+}

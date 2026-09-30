@@ -1,0 +1,59 @@
+{
+  "script_version": "BioTraj_V1.2_info_geometry_spatiotemporal_bootstrap_2026_09_16",
+  "input_file": "ANTS_WALL_TEST/tracking_results/ant_tracks.csv",
+  "unit": "cm",
+  "cm_per_pixel": 0.027607361963190188,
+  "n_positions": 293298,
+  "convex_hull_area": 1549.927180172382,
+  "convex_hull_perimeter": 159.7003009075135,
+  "circularity": 0.7636769621797864,
+  "grid_visited_area": 1306.5707789529156,
+  "grid_cell_size": 1.0590184049079756,
+  "monte_carlo_area": 1547.4298838029283,
+  "monte_carlo_ci95": [
+    1545.591427055654,
+    1549.2683405502025
+  ],
+  "pca_eigenvalues": [
+    145.1025796414914,
+    15.158880379934432
+  ],
+  "anisotropy_ratio": 9.572117201581811,
+  "pca_angle_deg": 178.00900172361202,
+  "pca_explained_variance": [
+    0.9054115669612158,
+    0.09458843303878423
+  ],
+  "mean_direction_deg": -21.551032194882573,
+  "mean_resultant_length": 0.011049891068561465,
+  "rayleigh_p": 2.501013099350985e-15,
+  "mean_turning_angle_deg": 64.06005803056699,
+  "msd_beta": 1.305263018331198,
+  "mean_straightness": 0.4431369249047209,
+  "fractal_dimension": 1.7565735935078977,
+  "uncertainty": {
+    "msd_beta": {
+      "slope": 1.305263018331198,
+      "intercept": -1.7443115795408148,
+      "se": 0.009208865401585596,
+      "ci_low": 1.2872136421440903,
+      "ci_high": 1.3233123945183056,
+      "n": 50
+    },
+    "fractal_D": {
+      "slope": 1.7565735935078977,
+      "intercept": 7.134158066186852,
+      "se": 0.024476705275117562,
+      "ci_low": 1.7085992511686672,
+      "ci_high": 1.8045479358471281,
+      "n": 12
+    },
+    "mean_straightness": {
+      "value": 0.4431369249047209,
+      "se": 0.0023606440269964297,
+      "ci_low": 0.4386937570296786,
+      "ci_high": 0.44754260559421155,
+      "n": 11204
+    }
+  }
+}

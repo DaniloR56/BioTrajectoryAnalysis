@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-09-21T19:34:04.926923",
-  "video_file": "SampleVideo.mov",
-  "total_frames_processed": 1119,
-  "total_positions": 23708,
-  "num_tracks": 1291,
-  "num_active_tracks_end": 56,
-  "avg_positions_per_frame": 21.186773905272563,
+  "timestamp": "2026-09-20T15:30:01.811343",
+  "video_file": "IMG_8069r_NoSOund.mov",
+  "total_frames_processed": 11787,
+  "total_positions": 293298,
+  "num_tracks": 17234,
+  "num_active_tracks_end": 64,
+  "avg_positions_per_frame": 24.883176380758464,
   "calibration": {
     "method": "manual_factor",
     "cm_per_pixel": 0.027607361963190184

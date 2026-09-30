@@ -1,0 +1,62 @@
+================================================================================
+ANT TRAJECTORY ANALYSIS REPORT
+Biophysics/statistical-physics framing
+================================================================================
+Script version: BioTraj_V1.2_info_geometry_spatiotemporal_bootstrap_2026_09_16
+Input file: ANTS_WALL_TEST/tracking_results/ant_tracks.csv
+Coordinate unit: cm
+cm_per_pixel: 0.027607362
+Total positions: 293,298
+
+1. SPATIAL EXPLORATION AND MONTE CARLO AREA
+--------------------------------------------------------------------------------
+Convex hull area: 1549.9272 cm^2
+Convex hull perimeter: 159.7003 cm
+Circularity index: 0.7637 (1 = perfect circle)
+Grid visited area: 1306.5708 cm^2
+Grid cell size: 1.0590 cm
+Monte Carlo area: 1547.4299 cm^2
+Monte Carlo 95% CI: [1545.5914, 1549.2683] cm^2
+Fraction of random points inside hull: 0.9820
+
+2. PCA ANISOTROPY
+--------------------------------------------------------------------------------
+Eigenvalue 1: 145.103 cm^2
+Eigenvalue 2: 15.1589 cm^2
+Anisotropy ratio lambda1/lambda2: 9.5721
+Principal orientation: 178.01 degrees
+Explained variance PC1: 90.54%
+Explained variance PC2: 9.46%
+
+3. DIRECTIONAL STATISTICS
+--------------------------------------------------------------------------------
+Number of displacement vectors: 275,357
+Mean direction: -21.55 degrees
+Mean resultant length: 0.0110
+Rayleigh p-value: 2.5010e-15
+
+4. STOCHASTIC TRAJECTORY DESCRIPTORS
+--------------------------------------------------------------------------------
+Turning angles computed: 260,313
+Mean turning angle: 64.06 degrees
+Median turning angle: 48.97 degrees
+MSD exponent beta: 1.3053
+MSD beta SE: 0.0092
+MSD beta 95% CI: [1.2872, 1.3233]
+Straightness tracks analysed: 11,204
+Mean straightness: 0.4431
+Median straightness: 0.4176
+Mean straightness SE: 0.0024
+Mean straightness 95% CI: [0.4387, 0.4475]
+Fractal dimension D: 1.7566
+Fractal dimension SE: 0.0245
+Fractal dimension 95% CI: [1.7086, 1.8045]
+
+INTERPRETATION
+--------------------------------------------------------------------------------
+The analysis treats ant trajectories as experimentally acquired stochastic
+samples of space. Monte Carlo sampling estimates the explored irregular
+domain, while PCA and directional statistics quantify anisotropy and
+preferred directions of motion. These quantities provide a compact
+framework for comparing biological motion with ideal isotropic random walks.
+================================================================================
