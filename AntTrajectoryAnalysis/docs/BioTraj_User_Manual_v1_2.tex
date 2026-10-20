@@ -82,7 +82,7 @@ track_id,frame,x,y
 1,1,124.2,202.3
 1,2,125.0,203.1
 \end{lstlisting}
-Coordinates may be expressed in pixels or calibrated physical units. Turning angles are calculated only within uninterrupted track segments and are never bridged across missing portions of a trajectory.
+Coordinates may be expressed in pixels or calibrated physical units. Turning angles are calculated from successive stored positions after observations have been grouped by track identifier and ordered by frame number. The current implementation does not additionally require those observations to occur in consecutive video frames; therefore, if the same track identifier is retained across a short detection gap, a turning angle may span that gap.
 
 \section{Trajectory Analysis}
 \subsection{Basic Usage}
@@ -140,17 +140,19 @@ The information-geometric module detects spatial or temporal changes in empirica
 \textbf{Important interpretation rule:} Fisher--Rao heterogeneity identifies where or when estimated movement statistics change; it does not determine why they change. Elevated values may reflect biological responses, physical constraints, surface geometry, projection effects, tracking artefacts, finite sampling, or combinations of these factors.
 
 \subsection{Turning-Angle Distributions}
-For three consecutive positions in the same continuous track segment,
+For three successive stored positions belonging to the same track identifier,
 \begin{equation}
 \Delta\mathbf r_t=\mathbf r_{t+1}-\mathbf r_t,
 \end{equation}
-and the unsigned turning angle is
+and, provided that both displacement vectors have non-zero length, the unsigned turning angle is
 \begin{equation}
 \Delta\theta_t=\arccos\left(
 \frac{\Delta\mathbf r_{t-1}\cdot\Delta\mathbf r_t}
 {\|\Delta\mathbf r_{t-1}\|\,\|\Delta\mathbf r_t\|}
 \right),\qquad 0\leq\Delta\theta\leq\pi.
 \end{equation}
+If either displacement vector has zero length, the angle is undefined and that observation is excluded. The angle is associated spatially with the middle position of the three-position sequence. Because the present representation is unsigned, it measures turning magnitude but does not retain left--right turning handedness.
+
 Within a spatial cell or temporal window, the angles are converted to a normalized histogram on a fixed common angular partition,
 \begin{equation}
 P=(p_1,\ldots,p_K),\qquad p_k\geq0,\qquad \sum_{k=1}^{K}p_k=1.

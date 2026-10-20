@@ -145,6 +145,11 @@ trajectory descriptors, spatial and temporal information geometry,
 finite-sampling controls, synthetic validation, scene annotation, and
 annotation-aware analysis.
 
+## Future development
+
+Possible directions for future development are described in the
+[BioTraj development roadmap](ROADMAP.md).
+
 ## Associated Publication
 
 Roccatano, D.
@@ -152,7 +157,7 @@ Roccatano, D.
 *BioTraj: Information-Geometric Mapping of Spatial and Temporal
 Heterogeneity in Biological Trajectories.*
 
-Manuscript prepared for submission.
+Manuscript submitted to Mathematics 
 
 ## Part of the BioTrajectoryAnalysis Project
 
